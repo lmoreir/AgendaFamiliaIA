@@ -1,0 +1,10 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/reminders",
+      "schedule": "*/15 * * * *"
+    }
+  ],
+  "framework": "nextjs",
+  "buildCommand": "cd ../.. && turbo run build --filter=@agenda-familia/web"
+}

@@ -1,0 +1,212 @@
+// Agenda da Família IA — Prisma Schema
+// Banco: PostgreSQL (Supabase)
+// Gerador: @prisma/client
+// ORM: Prisma 5.x
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────
+
+enum Plan {
+  FREE
+  BASIC
+  PRO
+}
+
+enum FamilyRole {
+  OWNER
+  PARENT
+  VIEWER
+}
+
+enum ActivityCategory {
+  SCHOOL
+  SPORT
+  MEDICAL
+  OTHER
+}
+
+enum ActivityStatus {
+  ACTIVE
+  CANCELLED
+  DONE
+}
+
+enum ActivitySource {
+  WHATSAPP
+  WEB
+  AI
+}
+
+enum ReminderChannel {
+  WHATSAPP
+  EMAIL
+  PUSH
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// ─────────────────────────────────────────
+// Models
+// ─────────────────────────────────────────
+
+model User {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  name               String
+  phone_whatsapp     String?
+  whatsapp_verified  Boolean   @default(false)
+  plan               Plan      @default(FREE)
+  stripe_customer_id String?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  // Relacionamentos
+  family_memberships FamilyMember[]
+  owned_families     Family[]        @relation("FamilyOwner")
+  created_activities Activity[]      @relation("ActivityCreator")
+  conversations      WhatsAppConversation[]
+
+  @@index([email])
+  @@index([phone_whatsapp])
+  @@map("users")
+}
+
+model Family {
+  id         String   @id @default(uuid())
+  owner_id   String
+  name       String
+  timezone   String   @default("America/Sao_Paulo")
+  locale     String   @default("pt-BR")
+  settings   Json     @default("{}")
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relacionamentos
+  owner      User           @relation("FamilyOwner", fields: [owner_id], references: [id], onDelete: Cascade)
+  members    FamilyMember[]
+  children   Child[]
+  activities Activity[]
+  reminders  Reminder[]
+
+  @@index([owner_id])
+  @@map("families")
+}
+
+model FamilyMember {
+  id              String     @id @default(uuid())
+  family_id       String
+  user_id         String?
+  role            FamilyRole @default(PARENT)
+  phone_whatsapp  String?
+  invited_email   String?
+  created_at      DateTime   @default(now())
+
+  // Relacionamentos
+  family Family @relation(fields: [family_id], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@unique([family_id, user_id])
+  @@index([family_id])
+  @@map("family_members")
+}
+
+model Child {
+  id         String   @id @default(uuid())
+  family_id  String
+  name       String
+  birth_date DateTime? @db.Date
+  color      String   @default("#3b82f6")
+  avatar_url String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relacionamentos
+  family     Family     @relation(fields: [family_id], references: [id], onDelete: Cascade)
+  activities Activity[]
+
+  @@index([family_id])
+  @@map("children")
+}
+
+model Activity {
+  id          String           @id @default(uuid())
+  family_id   String
+  child_id    String?
+  created_by  String
+  title       String
+  description String?
+  category    ActivityCategory @default(OTHER)
+  start_at    DateTime
+  end_at      DateTime?
+  location    String?
+  recurrence  Json?            // { type: "weekly", days: [1,3,5], until: "2025-12-31" }
+  source      ActivitySource   @default(WEB)
+  status      ActivityStatus   @default(ACTIVE)
+  created_at  DateTime         @default(now())
+  updated_at  DateTime         @updatedAt
+
+  // Relacionamentos
+  family    Family     @relation(fields: [family_id], references: [id], onDelete: Cascade)
+  child     Child?     @relation(fields: [child_id], references: [id], onDelete: SetNull)
+  creator   User       @relation("ActivityCreator", fields: [created_by], references: [id])
+  reminders Reminder[]
+
+  @@index([family_id])
+  @@index([child_id])
+  @@index([start_at])
+  @@index([family_id, start_at])
+  @@map("activities")
+}
+
+model Reminder {
+  id          String          @id @default(uuid())
+  activity_id String
+  family_id   String
+  trigger_at  DateTime
+  channels    ReminderChannel[]
+  status      ReminderStatus  @default(PENDING)
+  sent_at     DateTime?
+  error_msg   String?
+  created_at  DateTime        @default(now())
+
+  // Relacionamentos
+  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  family   Family   @relation(fields: [family_id], references: [id], onDelete: Cascade)
+
+  @@index([status, trigger_at])   // índice crítico para o cron job
+  @@index([activity_id])
+  @@map("reminders")
+}
+
+model WhatsAppConversation {
+  id              String   @id @default(uuid())
+  user_id         String
+  phone_number    String
+  messages        Json[]   @default([])  // histórico para contexto do Claude
+  context         Json     @default("{}")
+  last_message_at DateTime @default(now())
+  created_at      DateTime @default(now())
+
+  // Relacionamentos
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, phone_number])
+  @@index([phone_number])
+  @@map("whatsapp_conversations")
+}
