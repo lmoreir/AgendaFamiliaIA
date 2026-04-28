@@ -1,4 +1,1 @@
-{
-  "framework": "nextjs",
-  "buildCommand": "cd ../.. && turbo run build --filter=@agenda-familia/web"
-}
+{"framework":"nextjs","buildCommand":"cd ../.. && turbo run build --filter=@agenda-familia/web"}
