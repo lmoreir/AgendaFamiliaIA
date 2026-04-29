@@ -36,7 +36,10 @@ export async function loginAction(
   }
 
   const supabase = createClient();
-  const { error } = await supabase.auth.signInWithPassword(parsed.data);
+  const { error } = await supabase.auth.signInWithPassword({
+    email:    parsed.data.email as string,
+    password: parsed.data.password as string,
+  });
 
   if (error) {
     if (error.message.includes("Invalid login credentials")) {
@@ -70,8 +73,8 @@ export async function signupAction(
 
   const supabase = createClient();
   const { error } = await supabase.auth.signUp({
-    email:    parsed.data.email,
-    password: parsed.data.password,
+    email:    parsed.data.email as string,
+    password: parsed.data.password as string,
     options: {
       data: {
         full_name: parsed.data.name,
