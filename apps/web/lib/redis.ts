@@ -13,7 +13,7 @@ declare global {
 }
 
 function createRedisClient(): Redis {
-  const url = process.env.REDIS_URL || "redis://localhost:6379";
+  const url = process.env.REDIS_URL || process.env.UPSTASH_REDIS_URL || "redis://localhost:6379";
 
   const client = new Redis(url, {
     maxRetriesPerRequest: 3,
