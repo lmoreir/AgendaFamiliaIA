@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "npx prisma generate --schema=packages/database/prisma/schema.prisma",
     "dev":        "turbo run dev --parallel",
     "build":      "turbo run build",
     "lint":       "turbo run lint",
