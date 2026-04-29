@@ -1,4 +1,4 @@
-import { PrismaClient } from "@agenda-familia/database";
+import { PrismaClient } from "@prisma/client";
 
 declare global {
   var __prisma: PrismaClient | undefined;
