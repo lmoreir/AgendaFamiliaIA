@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { waitUntil } from "@vercel/functions";
-import { WhatsAppService, AIAgentService } from "@agenda-familia/services";
-import type { ConversationMessage } from "@agenda-familia/services";
+import { WhatsAppService, AIAgentService } from "../../../../lib/services";
+import type { ConversationMessage } from "../../../../lib/services";
 import { prisma } from "../../../../lib/prisma";
 import { redis, RedisKeys, REDIS_TTL } from "../../../../lib/redis";
 

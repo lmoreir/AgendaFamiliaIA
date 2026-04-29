@@ -1,10 +1,4 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  transpilePackages: [
-    "@agenda-familia/types",
-    "@agenda-familia/services",
-    "@agenda-familia/database"
-  ],
-};
+const nextConfig = {};
 
 module.exports = nextConfig;
