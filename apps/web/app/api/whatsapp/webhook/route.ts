@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { waitUntil } from "@vercel/functions";
 import { WhatsAppService, AIAgentService } from "@agenda-familia/services";
 import type { ConversationMessage } from "@agenda-familia/services";
 import { prisma } from "../../../../lib/prisma";
@@ -18,11 +19,13 @@ function normalizePhoneNumber(phone: string): string {
   return phone;
 }
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://agenda-familia-ia-web.vercel.app";
+
 const MSG_NO_ACCOUNT =
-  "Ola! Para usar o Agenda Familia IA, acesse http://localhost:3000 e crie sua conta primeiro.";
+  `Ola! Para usar o Agenda Familia IA, acesse ${APP_URL} e crie sua conta primeiro.`;
 
 const MSG_NO_FAMILY =
-  "Sua conta nao possui uma familia cadastrada. Acesse http://localhost:3000 para configurar.";
+  `Sua conta nao possui uma familia cadastrada. Acesse ${APP_URL} para configurar.`;
 
 /**
  * GET /api/whatsapp/webhook
@@ -56,10 +59,12 @@ export async function POST(request: NextRequest) {
   const payload = JSON.parse(body);
   console.log("[WA] Payload recebido:", JSON.stringify(payload).slice(0, 300));
 
-  processWebhookAsync(payload).catch((err) => {
-    console.error("[WA] Erro nao tratado em processWebhookAsync:", err?.message ?? err);
-    console.error(err?.stack);
-  });
+  waitUntil(
+    processWebhookAsync(payload).catch((err) => {
+      console.error("[WA] Erro nao tratado em processWebhookAsync:", err?.message ?? err);
+      console.error(err?.stack);
+    })
+  );
 
   return NextResponse.json({ status: "ok" }, { status: 200 });
 }
