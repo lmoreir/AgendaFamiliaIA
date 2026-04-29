@@ -4,9 +4,8 @@
   "private": true,
   "packageManager": "npm@10.9.7",
   "scripts": {
-    "postinstall": "prisma generate --schema=../../packages/database/prisma/schema.prisma",
     "dev": "next dev --port 3000",
-    "build": "next build --no-lint",
+    "build": "prisma generate --schema=../../packages/database/prisma/schema.prisma && next build --no-lint",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
