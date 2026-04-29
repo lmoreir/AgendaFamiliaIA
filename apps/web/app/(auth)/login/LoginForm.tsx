@@ -1,8 +1,8 @@
 "use client";
 
 import { useFormState, useFormStatus } from "react-dom";
-import { loginAction, oauthGoogleAction } from "@/app/actions/auth";
-import type { AuthResult } from "@/app/actions/auth";
+import { loginAction, oauthGoogleAction } from "../../actions/auth";
+import type { AuthResult } from "../../actions/auth";
 
 function SubmitButton() {
   const { pending } = useFormStatus();

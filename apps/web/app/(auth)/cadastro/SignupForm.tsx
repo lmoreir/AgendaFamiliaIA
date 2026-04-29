@@ -2,7 +2,7 @@
 
 import { useFormState, useFormStatus } from "react-dom";
 import Link from "next/link";
-import { signupAction } from "@/app/actions/auth";
+import { signupAction } from "../../actions/auth";
 
 type SignupState =
   | null

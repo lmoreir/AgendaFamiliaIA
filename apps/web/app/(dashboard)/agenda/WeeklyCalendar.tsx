@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ActivityModal } from "@/components/activity/ActivityModal";
-import { VoiceButton } from "@/components/activity/VoiceButton";
-import { CategoryBadge } from "@/components/ui/Badge";
+import { ActivityModal } from "../../../components/activity/ActivityModal";
+import { VoiceButton } from "../../../components/activity/VoiceButton";
+import { CategoryBadge } from "../../../components/ui/Badge";
 import type { ActivityCategory } from "@agenda-familia/types";
 
 interface SerializedChild {
