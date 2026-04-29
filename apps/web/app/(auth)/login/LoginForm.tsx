@@ -38,7 +38,7 @@ export function LoginForm() {
       <form action={action} className="space-y-4">
         {state && !state.success && (
           <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-            {state.error}
+            {(state as { success: false; error: string }).error}
           </div>
         )}
 
