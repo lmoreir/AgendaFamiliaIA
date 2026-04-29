@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
+import { WhatsAppService } from "../../../../lib/services";
 
 const WINDOW_MS = 10 * 60 * 1000;
+const whatsapp = new WhatsAppService();
 
 function formatDate(date: Date): string {
   return date.toLocaleString("pt-BR", {
@@ -23,9 +25,12 @@ function buildEmailHtml(opts: {
 }): string {
   const when = formatDate(opts.startAt);
   const who = opts.childName ? ` de ${opts.childName}` : "";
-  const timeLabel = opts.minutesBefore <= 60
-    ? `em ${opts.minutesBefore} minutos`
-    : "amanha";
+  const timeLabel =
+    opts.minutesBefore <= 60
+      ? `em ${opts.minutesBefore} minutos`
+      : opts.minutesBefore <= 1440
+      ? "amanhã"
+      : `em ${Math.round(opts.minutesBefore / 60 / 24)} dias`;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -34,12 +39,12 @@ function buildEmailHtml(opts: {
   <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;box-shadow:0 1px 4px rgba(0,0,0,.08)">
     <p style="margin:0 0 8px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Lembrete de Atividade</p>
     <h1 style="margin:0 0 4px;font-size:22px;color:#111827">${opts.activityTitle}${who}</h1>
-    <p style="margin:0 0 24px;font-size:15px;color:#374151">Comeca <strong>${timeLabel}</strong></p>
+    <p style="margin:0 0 24px;font-size:15px;color:#374151">Começa <strong>${timeLabel}</strong></p>
     <div style="background:#f3f4f6;border-radius:8px;padding:16px;font-size:14px;color:#374151">
       <p style="margin:0 0 6px"><strong>Quando:</strong> ${when}</p>
       ${opts.location ? `<p style="margin:0"><strong>Onde:</strong> ${opts.location}</p>` : ""}
     </div>
-    <p style="margin:24px 0 0;font-size:12px;color:#9ca3af;text-align:center">Agenda Familia IA</p>
+    <p style="margin:24px 0 0;font-size:12px;color:#9ca3af;text-align:center">Agenda Família IA</p>
   </div>
 </body>
 </html>`;
@@ -91,47 +96,89 @@ async function handleReminders(request: NextRequest): Promise<NextResponse> {
     },
   });
 
+  console.log(`[cron/reminders] ${pending.length} lembrete(s) pendente(s)`);
+
   let sent = 0;
   let failed = 0;
   const errors: string[] = [];
 
   for (const reminder of pending) {
-    const email = (reminder.family as any).owner?.email;
-    if (!email) {
-      failed++;
-      errors.push(`reminder ${reminder.id}: no owner email`);
-      continue;
-    }
-
+    const owner = (reminder.family as any).owner;
     const diffMs = reminder.activity.start_at.getTime() - now.getTime();
     const minutesBefore = Math.max(Math.round(diffMs / 60000), 0);
-    const who = reminder.activity.child?.name ?? null;
+    const childName = reminder.activity.child?.name ?? null;
+    const channels: string[] = (reminder.channels as string[]) ?? [];
 
-    const subject = who
-      ? `Lembrete: ${reminder.activity.title} de ${who}`
-      : `Lembrete: ${reminder.activity.title}`;
+    console.log(`[cron/reminders] Lembrete ${reminder.id} | canais: ${channels.join(",")} | ${minutesBefore}min antes`);
 
-    const html = buildEmailHtml({
-      activityTitle: reminder.activity.title,
-      childName: who,
-      startAt: reminder.activity.start_at,
-      location: reminder.activity.location ?? null,
-      minutesBefore,
-    });
+    let anyOk = false;
+    let lastError: string | undefined;
 
-    const result = await sendEmail({ to: email, subject, html });
+    // --- Canal WHATSAPP ---
+    if (channels.includes("WHATSAPP")) {
+      const phone = owner?.phone_whatsapp as string | null;
+      if (!phone) {
+        const msg = `reminder ${reminder.id}: owner sem phone_whatsapp`;
+        console.warn(`[cron/reminders] ${msg}`);
+        errors.push(msg);
+      } else {
+        try {
+          await whatsapp.sendActivityReminder({
+            to: phone,
+            activityTitle: reminder.activity.title,
+            childName,
+            startAt: reminder.activity.start_at,
+            location: reminder.activity.location ?? undefined,
+            minutesBefore,
+          });
+          console.log(`[cron/reminders] WhatsApp enviado para ${phone}`);
+          anyOk = true;
+        } catch (err: any) {
+          lastError = `WhatsApp error: ${err?.message}`;
+          console.error(`[cron/reminders] Erro WhatsApp:`, err?.message);
+          errors.push(lastError);
+        }
+      }
+    }
+
+    // --- Canal EMAIL ---
+    if (channels.includes("EMAIL")) {
+      const email = owner?.email as string | null;
+      if (!email) {
+        const msg = `reminder ${reminder.id}: owner sem email`;
+        console.warn(`[cron/reminders] ${msg}`);
+        errors.push(msg);
+      } else {
+        const who = childName ? ` de ${childName}` : "";
+        const subject = `Lembrete: ${reminder.activity.title}${who}`;
+        const html = buildEmailHtml({
+          activityTitle: reminder.activity.title,
+          childName,
+          startAt: reminder.activity.start_at,
+          location: reminder.activity.location ?? null,
+          minutesBefore,
+        });
+        const result = await sendEmail({ to: email, subject, html });
+        if (result.ok) {
+          console.log(`[cron/reminders] Email enviado para ${email}`);
+          anyOk = true;
+        } else {
+          lastError = result.error;
+          errors.push(result.error ?? "email error");
+        }
+      }
+    }
 
     await prisma.reminder.update({
       where: { id: reminder.id },
       data: {
-        status: result.ok ? "SENT" : "FAILED",
-        sent_at: result.ok ? now : undefined,
-        error_msg: result.ok ? undefined : result.error,
+        status: anyOk ? "SENT" : "FAILED",
+        sent_at: anyOk ? now : undefined,
+        error_msg: anyOk ? undefined : lastError,
       },
     });
 
-    result.ok ? sent++ : failed++;
-    if (!result.ok && result.error) errors.push(result.error);
+    anyOk ? sent++ : failed++;
   }
 
   console.log(`[cron/reminders] processed=${pending.length} sent=${sent} failed=${failed}`);
