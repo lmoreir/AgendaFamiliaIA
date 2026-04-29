@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { WhatsAppService, AIAgentService } from "@agenda-familia/services";
 import type { ConversationMessage } from "@agenda-familia/services";
-import { prisma } from "@/lib/prisma";
-import { redis, RedisKeys, REDIS_TTL } from "@/lib/redis";
+import { prisma } from "../../../../lib/prisma";
+import { redis, RedisKeys, REDIS_TTL } from "../../../../lib/redis";
 
 const whatsapp = new WhatsAppService();
 const aiAgent = new AIAgentService();

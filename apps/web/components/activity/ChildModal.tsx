@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { CHILD_COLORS } from "@/lib/utils";
+import { Button } from "../../components/ui/Button";
+import { Input } from "../../components/ui/Input";
+import { CHILD_COLORS } from "../../lib/utils";
 
 interface ChildModalProps {
   isOpen: boolean;

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
+import { createClient } from "../../../lib/supabase/server";
+import { prisma } from "../../../lib/prisma";
 import { LembretesClient } from "./LembretesClient";
 
 export const metadata: Metadata = { title: "Lembretes" };

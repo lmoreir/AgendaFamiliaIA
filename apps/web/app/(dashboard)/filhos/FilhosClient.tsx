@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/Button";
-import { ChildModal } from "@/components/activity/ChildModal";
-import { getInitials } from "@/lib/utils";
-import { getNextVaccine, getOverdueCount } from "@/lib/vaccination/pni-calendar";
+import { Button } from "../../../components/ui/Button";
+import { ChildModal } from "../../../components/activity/ChildModal";
+import { getInitials } from "../../../lib/utils";
+import { getNextVaccine, getOverdueCount } from "../../../lib/vaccination/pni-calendar";
 
 interface ChildData {
   id: string;

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
-import { getVaccineSchedule } from "@/lib/vaccination/pni-calendar";
+import { createClient } from "../../../../../lib/supabase/server";
+import { prisma } from "../../../../../lib/prisma";
+import { getVaccineSchedule } from "../../../../../lib/vaccination/pni-calendar";
 import { SaudeClient } from "./SaudeClient";
 
 export const metadata: Metadata = { title: "Saude" };

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createVaccinationActivities } from "@/lib/vaccination/VaccinationService";
+import { createVaccinationActivities } from "../../../lib/vaccination/VaccinationService";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
+import { createClient } from "../../../lib/supabase/server";
+import { prisma } from "../../../lib/prisma";
 
 const ListSchema = z.object({
   familyId: z.string().uuid("familyId invalido"),

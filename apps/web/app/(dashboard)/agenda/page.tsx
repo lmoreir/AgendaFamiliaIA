@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
+import { createClient } from "../../../lib/supabase/server";
+import { prisma } from "../../../lib/prisma";
 import { WeeklyCalendar } from "./WeeklyCalendar";
 
 export const metadata: Metadata = { title: "Agenda" };

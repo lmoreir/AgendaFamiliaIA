@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "../../lib/utils";
 import type { ActivityCategory } from "@agenda-familia/types";
 
 interface BadgeProps {

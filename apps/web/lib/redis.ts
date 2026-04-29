@@ -5,7 +5,7 @@ import Redis from "ioredis";
  * Em produção usa Upstash (serverless Redis).
  * Em desenvolvimento usa Redis local via Docker.
  *
- * Uso: import { redis } from "@/lib/redis"
+ * Uso: import { redis } from "../lib/redis"
  */
 
 declare global {

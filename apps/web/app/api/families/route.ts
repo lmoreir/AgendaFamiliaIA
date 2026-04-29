@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "../../../lib/supabase/server";
 
 /**
  * GET /api/families — retorna a família do usuário autenticado
