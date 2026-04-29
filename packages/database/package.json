@@ -2,14 +2,6 @@
   "name": "@agenda-familia/database",
   "version": "0.1.0",
   "private": true,
-  "main": "./generated/index.js",
-  "types": "./generated/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./generated/index.d.ts",
-      "default": "./generated/index.js"
-    }
-  },
   "scripts": {
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

@@ -1,5 +1,11 @@
 {
   "framework": "nextjs",
-  "buildCommand": "npm run build",
-  "installCommand": "npm install --prefix ../.. && npm install"
+  "buildCommand": "cd ../.. && npx prisma generate --schema=packages/database/prisma/schema.prisma && turbo run build --filter=@agenda-familia/web",
+  "installCommand": "npm install --prefix ../.. && npm install",
+  "crons": [
+    {
+      "path": "/api/cron/reminders",
+      "schedule": "*/15 * * * *"
+    }
+  ]
 }
