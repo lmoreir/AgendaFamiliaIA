@@ -207,12 +207,13 @@ async function handleIncomingMessage(msg: {
   // STEP 6 — enviar resposta
   console.log(`[WA] STEP 6 — Enviando resposta para ${normalizedFrom}...`);
   try {
-    await whatsapp.sendText({
+    const sendResult = await whatsapp.sendText({
       to:               normalizedFrom,
       body:             result.response,
       replyToMessageId: msg.messageId,
     });
-    console.log(`[WA] STEP 6 OK — Resposta enviada com sucesso para ${normalizedFrom}`);
+    console.log(`[WA] STEP 6 OK — Resposta enviada para ${normalizedFrom}`);
+    console.log(`[WA] STEP 6 API response:`, JSON.stringify(sendResult));
   } catch (err: any) {
     console.error("[WA] STEP 6 FALHOU — WhatsAppService.sendText:", err?.message);
     throw err;

@@ -31,7 +31,7 @@ export class WhatsAppService {
   /**
    * Envia mensagem de texto simples
    */
-  async sendText({ to, body, replyToMessageId }: SendTextMessageParams): Promise<void> {
+  async sendText({ to, body, replyToMessageId }: SendTextMessageParams): Promise<unknown> {
     const payload: Record<string, unknown> = {
       messaging_product: "whatsapp",
       recipient_type:    "individual",
@@ -44,7 +44,7 @@ export class WhatsAppService {
       payload.context = { message_id: replyToMessageId };
     }
 
-    await this.request("messages", "POST", payload);
+    return this.request("messages", "POST", payload);
   }
 
   /**
