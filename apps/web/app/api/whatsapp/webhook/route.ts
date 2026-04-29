@@ -57,7 +57,16 @@ export async function POST(request: NextRequest) {
   }
 
   const payload = JSON.parse(body);
-  console.log("[WA] Payload recebido:", JSON.stringify(payload).slice(0, 300));
+  console.log("[WA] Payload recebido:", JSON.stringify(payload).slice(0, 800));
+
+  // Loga status updates de entrega para diagnóstico
+  try {
+    const statuses = (payload as any)?.entry?.[0]?.changes?.[0]?.value?.statuses;
+    if (statuses?.length) {
+      console.log("[WA] Status update recebido:", JSON.stringify(statuses));
+    }
+  } catch {}
+
 
   waitUntil(
     processWebhookAsync(payload).catch((err) => {
