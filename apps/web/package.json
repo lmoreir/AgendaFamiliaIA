@@ -5,7 +5,7 @@
   "packageManager": "npm@10.9.7",
   "scripts": {
     "dev": "next dev --port 3000",
-    "build": "prisma generate --schema=../../packages/database/prisma/schema.prisma && next build --no-lint",
+    "build": "prisma generate --schema=./prisma/schema.prisma && next build --no-lint",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
