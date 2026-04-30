@@ -92,12 +92,14 @@ export class WhatsAppService {
     messageId: string;
     from: string;
     text: string;
+    audioMediaId?: string;
     timestamp: Date;
   }> {
     const messages: Array<{
       messageId: string;
       from: string;
       text: string;
+      audioMediaId?: string;
       timestamp: Date;
     }> = [];
 
@@ -118,20 +120,49 @@ export class WhatsAppService {
 
         for (const msg of incoming) {
           const m = msg as Record<string, unknown>;
-          if (m.type !== "text") continue;
 
-          const textObj = m.text as Record<string, unknown>;
-          messages.push({
-            messageId: m.id as string,
-            from:      m.from as string,
-            text:      textObj.body as string,
-            timestamp: new Date(parseInt(m.timestamp as string) * 1000),
-          });
+          if (m.type === "text") {
+            const textObj = m.text as Record<string, unknown>;
+            messages.push({
+              messageId: m.id as string,
+              from:      m.from as string,
+              text:      textObj.body as string,
+              timestamp: new Date(parseInt(m.timestamp as string) * 1000),
+            });
+          } else if (m.type === "audio") {
+            const audioObj = m.audio as Record<string, unknown>;
+            messages.push({
+              messageId:    m.id as string,
+              from:         m.from as string,
+              text:         "",
+              audioMediaId: audioObj?.id as string,
+              timestamp:    new Date(parseInt(m.timestamp as string) * 1000),
+            });
+          }
         }
       }
     }
 
     return messages;
+  }
+
+  async downloadMedia(mediaId: string): Promise<{ buffer: Buffer; mimeType: string }> {
+    // 1. Busca metadados da mídia (URL de download)
+    const metaRes = await fetch(`https://graph.facebook.com/v20.0/${mediaId}`, {
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    });
+    if (!metaRes.ok) throw new Error(`Falha ao buscar metadados da mídia: ${metaRes.status}`);
+    const meta = await metaRes.json() as Record<string, unknown>;
+    const downloadUrl = meta.url as string;
+    const mimeType = (meta.mime_type as string) || "audio/ogg";
+
+    // 2. Baixa o arquivo de áudio
+    const res = await fetch(downloadUrl, {
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    });
+    if (!res.ok) throw new Error(`Falha ao baixar mídia: ${res.status}`);
+    const arrayBuffer = await res.arrayBuffer();
+    return { buffer: Buffer.from(arrayBuffer), mimeType };
   }
 
   private async request(

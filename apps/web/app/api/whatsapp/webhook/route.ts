@@ -4,6 +4,7 @@ import { waitUntil } from "@vercel/functions";
 import { WhatsAppService, AIAgentService } from "../../../../lib/services";
 import type { ConversationMessage } from "../../../../lib/services";
 import { handleNoAccount, handleNoFamily } from "../../../../lib/services/OnboardingService";
+import { transcribeAudio } from "../../../../lib/services/TranscriptionService";
 import { prisma } from "../../../../lib/prisma";
 import { redis, RedisKeys, REDIS_TTL } from "../../../../lib/redis";
 
@@ -113,10 +114,42 @@ async function handleIncomingMessage(msg: {
   messageId: string;
   from: string;
   text: string;
+  audioMediaId?: string;
   timestamp: Date;
 }): Promise<void> {
   console.log(`\n[WA] === Processando mensagem ===`);
-  console.log(`[WA] De: ${msg.from} | ID: ${msg.messageId} | Texto: "${msg.text}"`);
+  console.log(`[WA] De: ${msg.from} | ID: ${msg.messageId} | Tipo: ${msg.audioMediaId ? "áudio" : "texto"}`);
+
+  // Transcreve áudio se necessário
+  let messageText = msg.text;
+  if (msg.audioMediaId) {
+    console.log(`[WA] Áudio detectado (mediaId: ${msg.audioMediaId}). Transcrevendo...`);
+    try {
+      const { buffer, mimeType } = await whatsapp.downloadMedia(msg.audioMediaId);
+      messageText = await transcribeAudio(buffer, mimeType);
+      console.log(`[WA] Transcrição: "${messageText}"`);
+    } catch (err: any) {
+      console.error("[WA] Falha na transcrição:", err?.message);
+      const normalizedFrom = normalizePhoneNumber(msg.from);
+      await whatsapp.sendText({
+        to: normalizedFrom,
+        body: "Não consegui entender o áudio. Pode repetir em texto? 🎙️",
+        replyToMessageId: msg.messageId,
+      });
+      return;
+    }
+    if (!messageText) {
+      const normalizedFrom = normalizePhoneNumber(msg.from);
+      await whatsapp.sendText({
+        to: normalizedFrom,
+        body: "Não entendi o áudio. Pode repetir em texto? 🎙️",
+        replyToMessageId: msg.messageId,
+      });
+      return;
+    }
+  }
+
+  console.log(`[WA] Texto: "${messageText}"`);
 
   const normalizedFrom = normalizePhoneNumber(msg.from);
   if (normalizedFrom !== msg.from) {
@@ -143,7 +176,7 @@ async function handleIncomingMessage(msg: {
   // STEP 2b — sem conta: onboarding
   if (!user) {
     console.log(`[WA] STEP 2 — Numero ${normalizedFrom} sem conta. Iniciando onboarding...`);
-    const response = await handleNoAccount(normalizedFrom, msg.text);
+    const response = await handleNoAccount(normalizedFrom, messageText);
     await whatsapp.sendText({ to: normalizedFrom, body: response, replyToMessageId: msg.messageId });
     console.log("[WA] Onboarding (sem conta): resposta enviada");
     return;
@@ -156,7 +189,7 @@ async function handleIncomingMessage(msg: {
   let family = user.owned_families?.[0];
   if (!family) {
     console.log(`[WA] STEP 2 — Usuario ${user.id} sem familia. Iniciando onboarding de familia...`);
-    const result = await handleNoFamily(user.id, normalizedFrom, msg.text);
+    const result = await handleNoFamily(user.id, normalizedFrom, messageText);
     await whatsapp.sendText({ to: normalizedFrom, body: result.response, replyToMessageId: msg.messageId });
     console.log("[WA] Onboarding (sem familia): resposta enviada");
 
@@ -187,7 +220,7 @@ async function handleIncomingMessage(msg: {
   let result: { response: string; toolsUsed: string[] };
   try {
     result = await aiAgent.processMessage({
-      userMessage: msg.text,
+      userMessage: messageText,
       familyId: family.id,
       conversationHistory: history,
     });
@@ -202,7 +235,7 @@ async function handleIncomingMessage(msg: {
   // STEP 5 — salvar historico
   try {
     history.push(
-      { role: "user",      content: msg.text },
+      { role: "user",      content: messageText },
       { role: "assistant", content: result.response }
     );
     if (history.length > MAX_HISTORY_MESSAGES) {
