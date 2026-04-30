@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { waitUntil } from "@vercel/functions";
 import { WhatsAppService, AIAgentService } from "../../../../lib/services";
 import type { ConversationMessage } from "../../../../lib/services";
+import { handleNoAccount, handleNoFamily } from "../../../../lib/services/OnboardingService";
 import { prisma } from "../../../../lib/prisma";
 import { redis, RedisKeys, REDIS_TTL } from "../../../../lib/redis";
 
@@ -18,14 +19,6 @@ function normalizePhoneNumber(phone: string): string {
   }
   return phone;
 }
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://agenda-familia-ia-web.vercel.app";
-
-const MSG_NO_ACCOUNT =
-  `Ola! Para usar o Agenda Familia IA, acesse ${APP_URL} e crie sua conta primeiro.`;
-
-const MSG_NO_FAMILY =
-  `Sua conta nao possui uma familia cadastrada. Acesse ${APP_URL} para configurar.`;
 
 /**
  * GET /api/whatsapp/webhook
@@ -66,7 +59,6 @@ export async function POST(request: NextRequest) {
       console.log("[WA] Status update recebido:", JSON.stringify(statuses));
     }
   } catch {}
-
 
   waitUntil(
     processWebhookAsync(payload).catch((err) => {
@@ -148,23 +140,32 @@ async function handleIncomingMessage(msg: {
     throw err;
   }
 
+  // STEP 2b — sem conta: onboarding
   if (!user) {
-    console.log(`[WA] STEP 2 OK — Numero ${normalizedFrom} NAO encontrado no banco`);
-    console.log("[WA] Enviando mensagem de cadastro...");
-    await whatsapp.sendText({ to: normalizedFrom, body: MSG_NO_ACCOUNT });
-    console.log("[WA] Mensagem de cadastro enviada com sucesso");
+    console.log(`[WA] STEP 2 — Numero ${normalizedFrom} sem conta. Iniciando onboarding...`);
+    const response = await handleNoAccount(normalizedFrom, msg.text);
+    await whatsapp.sendText({ to: normalizedFrom, body: response, replyToMessageId: msg.messageId });
+    console.log("[WA] Onboarding (sem conta): resposta enviada");
     return;
   }
 
   console.log(`[WA] STEP 2 OK — Usuario encontrado: id=${user.id} email=${user.email}`);
   console.log(`[WA] Familias do usuario: ${user.owned_families?.length ?? 0}`);
 
-  const family = user.owned_families?.[0];
+  // STEP 2c — sem família: onboarding de família
+  let family = user.owned_families?.[0];
   if (!family) {
-    console.log(`[WA] Usuario ${user.id} sem familia. Enviando aviso...`);
-    await whatsapp.sendText({ to: normalizedFrom, body: MSG_NO_FAMILY });
-    console.log("[WA] Aviso de familia enviado com sucesso");
-    return;
+    console.log(`[WA] STEP 2 — Usuario ${user.id} sem familia. Iniciando onboarding de familia...`);
+    const result = await handleNoFamily(user.id, normalizedFrom, msg.text);
+    await whatsapp.sendText({ to: normalizedFrom, body: result.response, replyToMessageId: msg.messageId });
+    console.log("[WA] Onboarding (sem familia): resposta enviada");
+
+    // Se família foi criada, continua o fluxo normal já nesta mensagem
+    if (result.familyId) {
+      family = { id: result.familyId, name: "" };
+    } else {
+      return;
+    }
   }
 
   console.log(`[WA] Familia: id=${family.id} nome="${family.name}"`);

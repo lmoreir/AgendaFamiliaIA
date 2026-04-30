@@ -42,10 +42,13 @@ export const RedisKeys = {
   conversationContext: (userId: string) => `conversation:${userId}:context`,
   reminderLock: (reminderId: string) => `reminder:${reminderId}:lock`,
   rateLimitWhatsApp: (phone: string) => `ratelimit:whatsapp:${phone}`,
+  onboardingStage: (phone: string) => `onboarding:${phone}:stage`,
+  onboardingData: (phone: string) => `onboarding:${phone}:data`,
 } as const;
 
 export const REDIS_TTL = {
   conversationContext: 60 * 60 * 24,    // 24 horas
   reminderLock: 60 * 5,                  // 5 minutos
   rateLimitWhatsApp: 60,                 // 1 minuto
+  onboarding: 60 * 60,                   // 1 hora
 } as const;
