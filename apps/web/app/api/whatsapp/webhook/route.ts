@@ -115,6 +115,8 @@ async function handleIncomingMessage(msg: {
   from: string;
   text: string;
   audioMediaId?: string;
+  audioUrl?: string;
+  audioMime?: string;
   timestamp: Date;
 }): Promise<void> {
   console.log(`\n[WA] === Processando mensagem ===`);
@@ -125,7 +127,7 @@ async function handleIncomingMessage(msg: {
   if (msg.audioMediaId) {
     console.log(`[WA] Áudio detectado (mediaId: ${msg.audioMediaId}). Transcrevendo...`);
     try {
-      const { buffer, mimeType } = await whatsapp.downloadMedia(msg.audioMediaId);
+      const { buffer, mimeType } = await whatsapp.downloadMedia(msg.audioMediaId, msg.audioUrl, msg.audioMime);
       messageText = await transcribeAudio(buffer, mimeType);
       console.log(`[WA] Transcrição: "${messageText}"`);
     } catch (err: any) {

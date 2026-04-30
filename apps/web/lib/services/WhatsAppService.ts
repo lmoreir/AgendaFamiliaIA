@@ -93,6 +93,8 @@ export class WhatsAppService {
     from: string;
     text: string;
     audioMediaId?: string;
+    audioUrl?: string;
+    audioMime?: string;
     timestamp: Date;
   }> {
     const messages: Array<{
@@ -100,6 +102,8 @@ export class WhatsAppService {
       from: string;
       text: string;
       audioMediaId?: string;
+      audioUrl?: string;
+      audioMime?: string;
       timestamp: Date;
     }> = [];
 
@@ -136,6 +140,8 @@ export class WhatsAppService {
               from:         m.from as string,
               text:         "",
               audioMediaId: audioObj?.id as string,
+              audioUrl:     audioObj?.url as string | undefined,
+              audioMime:    audioObj?.mime_type as string | undefined,
               timestamp:    new Date(parseInt(m.timestamp as string) * 1000),
             });
           }
@@ -146,17 +152,25 @@ export class WhatsAppService {
     return messages;
   }
 
-  async downloadMedia(mediaId: string): Promise<{ buffer: Buffer; mimeType: string }> {
-    // 1. Busca metadados da mídia (URL de download)
-    const metaRes = await fetch(`https://graph.facebook.com/v20.0/${mediaId}`, {
-      headers: { Authorization: `Bearer ${this.accessToken}` },
-    });
-    if (!metaRes.ok) throw new Error(`Falha ao buscar metadados da mídia: ${metaRes.status}`);
-    const meta = await metaRes.json() as Record<string, unknown>;
-    const downloadUrl = meta.url as string;
-    const mimeType = (meta.mime_type as string) || "audio/ogg";
+  async downloadMedia(
+    mediaId: string,
+    directUrl?: string,
+    mimeTypeHint?: string
+  ): Promise<{ buffer: Buffer; mimeType: string }> {
+    let downloadUrl = directUrl;
+    let mimeType = mimeTypeHint || "audio/ogg";
 
-    // 2. Baixa o arquivo de áudio
+    if (!downloadUrl) {
+      // Busca metadados apenas se não tiver a URL direta do payload
+      const metaRes = await fetch(`https://graph.facebook.com/v20.0/${mediaId}`, {
+        headers: { Authorization: `Bearer ${this.accessToken}` },
+      });
+      if (!metaRes.ok) throw new Error(`Falha ao buscar metadados da mídia: ${metaRes.status}`);
+      const meta = await metaRes.json() as Record<string, unknown>;
+      downloadUrl = meta.url as string;
+      mimeType = (meta.mime_type as string) || mimeType;
+    }
+
     const res = await fetch(downloadUrl, {
       headers: { Authorization: `Bearer ${this.accessToken}` },
     });
