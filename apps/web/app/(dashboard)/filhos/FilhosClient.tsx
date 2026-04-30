@@ -5,13 +5,19 @@ import Link from "next/link";
 import { Button } from "../../../components/ui/Button";
 import { ChildModal } from "../../../components/activity/ChildModal";
 import { getInitials } from "../../../lib/utils";
-import { getNextVaccine, getOverdueCount } from "../../../lib/vaccination/pni-calendar";
+
+interface VaccineSummary {
+  done: number;
+  total: number;
+  overdue: number;
+}
 
 interface ChildData {
   id: string;
   name: string;
   color: string;
   birth_date?: string | null;
+  vaccineSummary?: VaccineSummary | null;
 }
 
 interface FilhosClientProps {
@@ -32,28 +38,37 @@ function calcAge(birthDate: string): string {
   return age === 1 ? "1 ano" : `${age} anos`;
 }
 
-function formatShortDate(date: Date): string {
-  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
-}
+function VaccineInfo({ summary }: { summary: VaccineSummary }) {
+  const allDone = summary.done === summary.total;
+  const pending = summary.total - summary.done;
 
-function VaccineInfo({ birthDate }: { birthDate: string }) {
-  const birth = new Date(birthDate);
-  const next = getNextVaccine(birth);
-  const overdue = getOverdueCount(birth);
+  if (allDone) {
+    return (
+      <div className="mt-3 border-t border-gray-100 pt-3">
+        <p className="flex items-center gap-1 text-xs font-medium text-green-600">
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          Vacinacao em dia ({summary.total} vacinas)
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-3 border-t border-gray-100 pt-3 space-y-1">
-      {overdue > 0 && (
+      {summary.overdue > 0 && (
         <p className="text-xs font-medium text-red-600">
-          {overdue} vacina{overdue > 1 ? "s" : ""} atrasada{overdue > 1 ? "s" : ""}
+          {summary.overdue} vacina{summary.overdue > 1 ? "s" : ""} atrasada{summary.overdue > 1 ? "s" : ""}
         </p>
       )}
-      {next && (
-        <p className="text-xs text-gray-500">
-          Proxima: <span className="font-medium text-gray-700">{next.name} - {next.dose}</span>{" "}
-          <span className="text-gray-400">({formatShortDate(next.dueDate)})</span>
-        </p>
-      )}
+      <p className="text-xs text-gray-500">
+        <span className="font-medium text-gray-700">{summary.done}</span> de{" "}
+        <span className="font-medium text-gray-700">{summary.total}</span> tomadas
+        {pending > 0 && summary.overdue === 0 && (
+          <span className="ml-1 text-yellow-600">· {pending} pendente{pending > 1 ? "s" : ""}</span>
+        )}
+      </p>
     </div>
   );
 }
@@ -146,7 +161,9 @@ export function FilhosClient({ initialChildren, familyId }: FilhosClientProps) {
                 </div>
               </div>
 
-              {child.birth_date && <VaccineInfo birthDate={child.birth_date} />}
+              {child.birth_date && child.vaccineSummary && (
+                <VaccineInfo summary={child.vaccineSummary} />
+              )}
 
               <div className="mt-3 flex gap-2">
                 {child.birth_date && (
