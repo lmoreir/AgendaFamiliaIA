@@ -118,7 +118,7 @@ export async function PATCH(request: NextRequest) {
 
   const updated = await prisma.family.update({
     where: { id: family.id },
-    data: { settings: newSettings },
+    data: { settings: newSettings as any },
   });
 
   return NextResponse.json({ family: updated });
