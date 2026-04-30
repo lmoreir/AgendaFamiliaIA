@@ -8,6 +8,15 @@ const CreateSchema = z.object({
   timezone: z.string().default("America/Sao_Paulo"),
 });
 
+const PatchSettingsSchema = z.object({
+  secondary_whatsapp: z
+    .string()
+    .regex(/^\d{10,15}$/, "Número inválido — use apenas dígitos com código do país")
+    .nullable()
+    .optional(),
+  notify_email: z.boolean().optional(),
+});
+
 async function resolveUser(supabase: ReturnType<typeof createClient>) {
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return null;
@@ -71,4 +80,46 @@ export async function POST(request: NextRequest) {
   });
 
   return NextResponse.json({ family }, { status: 201 });
+}
+
+export async function PATCH(request: NextRequest) {
+  const supabase = createClient();
+  const prismaUser = await resolveUser(supabase);
+  if (!prismaUser) {
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  }
+
+  const family = await prisma.family.findFirst({ where: { owner_id: prismaUser.id } });
+  if (!family) {
+    return NextResponse.json({ error: "Família não encontrada" }, { status: 404 });
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
+  }
+
+  const parsed = PatchSettingsSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten().fieldErrors }, { status: 422 });
+  }
+
+  const currentSettings = (family.settings as Record<string, unknown>) ?? {};
+  const newSettings = { ...currentSettings };
+
+  if (parsed.data.secondary_whatsapp !== undefined) {
+    newSettings.secondary_whatsapp = parsed.data.secondary_whatsapp;
+  }
+  if (parsed.data.notify_email !== undefined) {
+    newSettings.notify_email = parsed.data.notify_email;
+  }
+
+  const updated = await prisma.family.update({
+    where: { id: family.id },
+    data: { settings: newSettings },
+  });
+
+  return NextResponse.json({ family: updated });
 }

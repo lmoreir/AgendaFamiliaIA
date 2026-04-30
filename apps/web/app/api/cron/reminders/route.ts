@@ -114,6 +114,11 @@ async function handleReminders(request: NextRequest): Promise<NextResponse> {
     let anyOk = false;
     let lastError: string | undefined;
 
+    const familySettings = ((reminder.family as any).settings ?? {}) as {
+      secondary_whatsapp?: string | null;
+      notify_email?: boolean;
+    };
+
     // --- Canal WHATSAPP ---
     if (channels.includes("WHATSAPP")) {
       const phone = owner?.phone_whatsapp as string | null;
@@ -137,6 +142,26 @@ async function handleReminders(request: NextRequest): Promise<NextResponse> {
           lastError = `WhatsApp error: ${err?.message}`;
           console.error(`[cron/reminders] Erro WhatsApp:`, err?.message);
           errors.push(lastError);
+        }
+      }
+
+      // Segundo número WhatsApp (configuração da família)
+      const secondaryPhone = familySettings.secondary_whatsapp;
+      if (secondaryPhone) {
+        try {
+          await whatsapp.sendActivityReminder({
+            to: secondaryPhone,
+            activityTitle: reminder.activity.title,
+            childName,
+            startAt: reminder.activity.start_at,
+            location: reminder.activity.location ?? undefined,
+            minutesBefore,
+          });
+          console.log(`[cron/reminders] WhatsApp secundário enviado para ${secondaryPhone}`);
+          anyOk = true;
+        } catch (err: any) {
+          console.error(`[cron/reminders] Erro WhatsApp secundário:`, err?.message);
+          errors.push(`WhatsApp secundário error: ${err?.message}`);
         }
       }
     }
@@ -164,6 +189,30 @@ async function handleReminders(request: NextRequest): Promise<NextResponse> {
           anyOk = true;
         } else {
           lastError = result.error;
+          errors.push(result.error ?? "email error");
+        }
+      }
+    }
+
+    // --- Email por preferência da família (notify_email) ---
+    if (familySettings.notify_email && !channels.includes("EMAIL")) {
+      const email = owner?.email as string | null;
+      if (email) {
+        const who = childName ? ` de ${childName}` : "";
+        const subject = `Lembrete: ${reminder.activity.title}${who}`;
+        const html = buildEmailHtml({
+          activityTitle: reminder.activity.title,
+          childName,
+          startAt: reminder.activity.start_at,
+          location: reminder.activity.location ?? null,
+          minutesBefore,
+        });
+        const result = await sendEmail({ to: email, subject, html });
+        if (result.ok) {
+          console.log(`[cron/reminders] Email (preferência família) enviado para ${email}`);
+          anyOk = true;
+        } else {
+          console.error(`[cron/reminders] Erro email preferência família:`, result.error);
           errors.push(result.error ?? "email error");
         }
       }
