@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { createClient } from "../../lib/supabase/server";
+import { prisma } from "../../lib/prisma";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -10,11 +12,29 @@ const navItems = [
   { href: "/configuracoes",  icon: "⚙️",  label: "Configurações" },
 ];
 
-export default function DashboardLayout({
+async function getCurrentUser() {
+  try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user?.email) return null;
+    return prisma.user.findUnique({
+      where: { email: user.email },
+      select: { name: true, email: true },
+    });
+  } catch {
+    return null;
+  }
+}
+
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const user = await getCurrentUser();
+  const displayName = user?.name || user?.email?.split("@")[0] || "Usuário";
+  const initial = displayName.charAt(0).toUpperCase();
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       {/* Sidebar */}
@@ -45,11 +65,13 @@ export default function DashboardLayout({
         <div className="border-t border-gray-100 p-4">
           <div className="flex items-center gap-3 rounded-lg px-3 py-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
-              A
+              {initial}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="truncate text-sm font-medium text-gray-900">Ana Silva</p>
-              <p className="truncate text-xs text-gray-500">Plano Grátis</p>
+              <p className="truncate text-sm font-medium text-gray-900">{displayName}</p>
+              <Link href="/configuracoes" className="truncate text-xs text-gray-400 hover:text-gray-600">
+                Configurações
+              </Link>
             </div>
           </div>
         </div>
