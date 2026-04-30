@@ -64,8 +64,17 @@ function formatAge(months: number): string {
   return `${y}a ${m}m`;
 }
 
-function Checkbox({ checked, loading, disabled, onChange }: {
-  checked: boolean;
+function DoneIcon() {
+  return (
+    <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-green-500">
+      <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+      </svg>
+    </div>
+  );
+}
+
+function MarkButton({ loading, disabled, onChange }: {
   loading: boolean;
   disabled: boolean;
   onChange: () => void;
@@ -75,22 +84,16 @@ function Checkbox({ checked, loading, disabled, onChange }: {
       type="button"
       onClick={onChange}
       disabled={disabled || loading}
-      className={`h-5 w-5 flex-shrink-0 rounded border-2 flex items-center justify-center transition-colors ${
-        checked
-          ? "bg-green-500 border-green-500"
-          : "border-gray-300 bg-white hover:border-green-400"
-      } ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+      className={`h-5 w-5 flex-shrink-0 rounded border-2 flex items-center justify-center transition-colors border-gray-300 bg-white hover:border-green-400 ${
+        disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+      }`}
     >
-      {loading ? (
-        <svg className="h-3 w-3 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+      {loading && (
+        <svg className="h-3 w-3 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
-      ) : checked ? (
-        <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-        </svg>
-      ) : null}
+      )}
     </button>
   );
 }
@@ -116,21 +119,46 @@ export function SaudeClient({
   const overdue = rows.filter((r) => r.status === "overdue").length;
 
   async function handleToggle(row: VaccineRow) {
-    if (!row.activityId || marking) return;
-    const isDone = row.status === "done";
-    const apiStatus = isDone ? "ACTIVE" : "DONE";
-    const newStatus: VaccineStatus = isDone ? deriveStatus(row.dueDate) : "done";
+    if (row.status === "done" || marking) return;
     setMarking(row.key);
     try {
-      const res = await fetch(`/api/activities/${row.activityId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: apiStatus }),
-      });
-      if (res.ok) {
-        setRows((prev) =>
-          prev.map((r) => (r.key === row.key ? { ...r, status: newStatus } : r))
-        );
+      if (row.activityId) {
+        // Atividade já existe — só atualiza status para DONE
+        const res = await fetch(`/api/activities/${row.activityId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "DONE" }),
+        });
+        if (res.ok) {
+          setRows((prev) =>
+            prev.map((r) => (r.key === row.key ? { ...r, status: "done" } : r))
+          );
+        }
+      } else {
+        // Atividade ainda não existe — cria como DONE
+        const title = `Vacina: ${row.name} - ${row.dose}`;
+        const res = await fetch("/api/activities", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            family_id: familyId,
+            child_id: childId,
+            title,
+            category: "MEDICAL",
+            start_at: row.dueDate,
+            status: "DONE",
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setRows((prev) =>
+            prev.map((r) =>
+              r.key === row.key
+                ? { ...r, status: "done", activityId: data.activity.id }
+                : r
+            )
+          );
+        }
       }
     } finally {
       setMarking(null);
@@ -228,7 +256,7 @@ export function SaudeClient({
             />
           </div>
           <p className="mt-2 text-xs text-gray-400">
-            Clique no checkbox para marcar ou desmarcar uma vacina como tomada
+            Clique no checkbox para registrar uma vacina como tomada
           </p>
         </div>
 
@@ -238,12 +266,15 @@ export function SaudeClient({
             const isLoading = marking === row.key;
             return (
               <div key={row.key} className="flex items-center gap-3 px-6 py-3">
-                <Checkbox
-                  checked={row.status === "done"}
-                  loading={isLoading}
-                  disabled={!row.activityId || (!!marking && !isLoading)}
-                  onChange={() => handleToggle(row)}
-                />
+                {row.status === "done" ? (
+                  <DoneIcon />
+                ) : (
+                  <MarkButton
+                    loading={isLoading}
+                    disabled={!!marking && !isLoading}
+                    onChange={() => handleToggle(row)}
+                  />
+                )}
                 <div className={`h-2 w-2 flex-shrink-0 rounded-full ${cfg.dot}`} />
                 <div className="flex-1 min-w-0">
                   <p className={`truncate text-sm font-medium ${
