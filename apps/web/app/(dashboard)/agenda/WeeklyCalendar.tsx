@@ -282,9 +282,9 @@ export function WeeklyCalendar({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Agenda da semana</h1>
+          <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Agenda da semana</h1>
           <p className="mt-1 text-sm text-gray-500">
             Visualize e gerencie as atividades de toda a familia
           </p>
@@ -297,7 +297,7 @@ export function WeeklyCalendar({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <div className="card p-5">
           <p className="text-2xl font-bold text-gray-900">{activities.length}</p>
           <p className="text-xs text-gray-500">Atividades esta semana</p>
@@ -364,7 +364,8 @@ export function WeeklyCalendar({
             </svg>
           </div>
         ) : (
-          <div className="grid grid-cols-7 divide-x divide-gray-100">
+          <div className="overflow-x-auto">
+          <div className="grid min-w-[560px] grid-cols-7 divide-x divide-gray-100">
             {weekDays.map((day, i) => {
               const key = day.toISOString().split("T")[0];
               const dayActivities = activitiesByDay[key] ?? [];
@@ -412,6 +413,7 @@ export function WeeklyCalendar({
                 </div>
               );
             })}
+          </div>
           </div>
         )}
       </div>

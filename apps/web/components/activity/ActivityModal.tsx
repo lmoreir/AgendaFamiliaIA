@@ -253,7 +253,7 @@ export function ActivityModal({
             required
           />
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Select
               label="Filho"
               value={form.child_id}
@@ -280,7 +280,7 @@ export function ActivityModal({
             </Select>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Input
               label="Data"
               type="date"
