@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import { WhatsAppService } from "../../../../lib/services";
 
-const WINDOW_MS = 10 * 60 * 1000;
+const WINDOW_MS = 65 * 60 * 1000; // 65 min — cobre a janela entre execuções horárias
 const whatsapp = new WhatsAppService();
 
 function formatDate(date: Date): string {
