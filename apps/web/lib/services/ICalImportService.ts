@@ -1,3 +1,5 @@
+import { prisma } from "../prisma";
+
 export interface ICalEvent {
   uid: string;
   summary: string;
@@ -120,4 +122,44 @@ function unescapeText(str: string): string {
     .replace(/\\;/g, ";")
     .replace(/\\\\/g, "\\")
     .trim();
+}
+
+export async function runICalImport(
+  familyId: string,
+  userId: string,
+  url: string,
+  existingMap: Record<string, string>
+): Promise<{ imported: number; updated: number; removed: number; newMap: Record<string, string> }> {
+  const events = await fetchAndParseICal(url);
+  const newMap = { ...existingMap };
+  let imported = 0, updated = 0, removed = 0;
+
+  const seenUids = new Set(events.map((e) => e.uid));
+
+  for (const event of events) {
+    const existingId = existingMap[event.uid];
+    if (existingId) {
+      await prisma.activity.updateMany({
+        where: { id: existingId, family_id: familyId },
+        data: { title: event.summary, description: event.description ?? null, location: event.location ?? null, start_at: event.start, end_at: event.end ?? null },
+      });
+      updated++;
+    } else {
+      const created = await prisma.activity.create({
+        data: { family_id: familyId, created_by: userId, title: event.summary, description: event.description ?? null, location: event.location ?? null, category: "OTHER", start_at: event.start, end_at: event.end ?? null, source: "WEB", status: "ACTIVE" },
+      });
+      newMap[event.uid] = created.id;
+      imported++;
+    }
+  }
+
+  for (const [uid, activityId] of Object.entries(existingMap)) {
+    if (!seenUids.has(uid)) {
+      await prisma.activity.updateMany({ where: { id: activityId, family_id: familyId }, data: { status: "CANCELLED" } });
+      delete newMap[uid];
+      removed++;
+    }
+  }
+
+  return { imported, updated, removed, newMap };
 }

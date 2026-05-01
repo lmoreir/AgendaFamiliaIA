@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import { WhatsAppService } from "../../../../lib/services";
 import { GoogleCalendarService } from "../../../../lib/services/GoogleCalendarService";
-import { fetchAndParseICal } from "../../../../lib/services/ICalImportService";
+import { runICalImport } from "../../../../lib/services/ICalImportService";
 
 const WINDOW_MS = 65 * 60 * 1000; // 65 min — cobre a janela entre execuções horárias
 const whatsapp = new WhatsAppService();
@@ -328,34 +328,12 @@ async function syncICalForFamily(
   url: string,
   settings: Record<string, unknown>
 ): Promise<void> {
-  const events = await fetchAndParseICal(url);
   const importMap = (settings.ical_import_map as Record<string, string>) ?? {};
-  const newMap = { ...importMap };
-  const seenUids = new Set(events.map((e) => e.uid));
-
-  for (const event of events) {
-    const existingId = importMap[event.uid];
-    if (existingId) {
-      await prisma.activity.updateMany({
-        where: { id: existingId, family_id: familyId },
-        data: { title: event.summary, description: event.description ?? null, location: event.location ?? null, start_at: event.start, end_at: event.end ?? null },
-      });
-    } else {
-      const created = await prisma.activity.create({
-        data: { family_id: familyId, created_by: ownerId, title: event.summary, description: event.description ?? null, location: event.location ?? null, category: "OTHER", start_at: event.start, end_at: event.end ?? null, source: "WEB", status: "ACTIVE" },
-      });
-      newMap[event.uid] = created.id;
-    }
-  }
-
-  for (const [uid, activityId] of Object.entries(importMap)) {
-    if (!seenUids.has(uid)) {
-      await prisma.activity.updateMany({ where: { id: activityId, family_id: familyId }, data: { status: "CANCELLED" } });
-      delete newMap[uid];
-    }
-  }
-
-  await prisma.family.update({ where: { id: familyId }, data: { settings: { ...settings, ical_import_map: newMap } as any } });
+  const result = await runICalImport(familyId, ownerId, url, importMap);
+  await prisma.family.update({
+    where: { id: familyId },
+    data: { settings: { ...settings, ical_import_map: result.newMap } as any },
+  });
 }
 
 export async function POST(request: NextRequest) {
