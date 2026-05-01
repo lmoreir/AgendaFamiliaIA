@@ -24,6 +24,7 @@ interface Family {
 
 interface CalendarStatus {
   ical: { token: string } | null;
+  icalImport: { url: string } | null;
   google: { connected: boolean; configured: boolean };
 }
 
@@ -55,6 +56,9 @@ export default function ConfiguracoesPage() {
   const [syncing, setSyncing] = useState(false);
   const [generatingIcal, setGeneratingIcal] = useState(false);
   const [copied, setCopied] = useState(false);
+  // iCal import
+  const [icalImportUrl, setIcalImportUrl] = useState("");
+  const [savingIcalImport, setSavingIcalImport] = useState(false);
 
   useEffect(() => {
     fetch("/api/user/profile")
@@ -80,7 +84,10 @@ export default function ConfiguracoesPage() {
 
     fetch("/api/calendar/status")
       .then((r) => r.json())
-      .then((data: CalendarStatus) => setCalStatus(data))
+      .then((data: CalendarStatus) => {
+        setCalStatus(data);
+        if (data.icalImport?.url) setIcalImportUrl(data.icalImport.url);
+      })
       .catch(() => {});
 
     // Feedback from OAuth redirect
@@ -211,6 +218,39 @@ export default function ConfiguracoesPage() {
       setCalMsg(`✅ Sincronizado! ${data.created} criados, ${data.updated} atualizados, ${data.deleted} removidos.`);
     } else {
       setCalMsg(`❌ ${data.error ?? "Erro ao sincronizar."}`);
+    }
+  }
+
+  async function saveIcalImport() {
+    setSavingIcalImport(true);
+    setCalMsg("");
+    const res = await fetch("/api/calendar/ical/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: icalImportUrl }),
+    });
+    const data = await res.json();
+    setSavingIcalImport(false);
+    if (res.ok) {
+      if (data.removed) {
+        setCalStatus((prev) => ({ ...prev!, icalImport: null }));
+        setCalMsg("Importação iCal removida.");
+      } else {
+        setCalStatus((prev) => ({ ...prev!, icalImport: { url: icalImportUrl } }));
+        setCalMsg(`✅ Importados ${data.imported} novos eventos, ${data.updated} atualizados.`);
+      }
+    } else {
+      setCalMsg(`❌ ${data.error ?? "Erro ao importar calendário."}`);
+    }
+  }
+
+  async function removeIcalImport() {
+    setCalMsg("");
+    const res = await fetch("/api/calendar/ical/import", { method: "DELETE" });
+    if (res.ok) {
+      setCalStatus((prev) => ({ ...prev!, icalImport: null }));
+      setIcalImportUrl("");
+      setCalMsg("Importação iCal removida.");
     }
   }
 
@@ -348,7 +388,7 @@ export default function ConfiguracoesPage() {
         </div>
         <div className="card-body space-y-6">
           <p className="text-sm text-gray-600">
-            Sincronize as atividades da sua família com seu aplicativo de calendário preferido.
+            O Agenda Família é a fonte central de dados. Você pode importar eventos de outros calendários para cá, e exportar sua agenda para apps externos.
           </p>
 
           {calMsg && (
@@ -357,13 +397,119 @@ export default function ConfiguracoesPage() {
             </div>
           )}
 
-          {/* iCal */}
+          {/* Google Calendar — bidirecional */}
           <div className="space-y-3 rounded-lg border border-gray-200 p-4">
             <div className="flex items-center gap-2">
-              <span className="text-lg">📅</span>
+              <span className="text-lg">🗓️</span>
               <div>
-                <p className="font-medium text-gray-900 text-sm">Apple Calendar / iCal</p>
-                <p className="text-xs text-gray-500">Funciona com Apple Calendar, Outlook, Google Calendar (modo assinatura) e qualquer app com suporte a .ics</p>
+                <p className="font-medium text-gray-900 text-sm">Google Calendar</p>
+                <p className="text-xs text-gray-500">
+                  Bidirecional — eventos do Google entram no app, atividades do app vão para o Google. Tudo passa pelas notificações.
+                </p>
+              </div>
+            </div>
+
+            {calStatus === null ? (
+              <p className="text-xs text-gray-400">Carregando...</p>
+            ) : !calStatus.google.configured ? (
+              <div className="rounded-lg bg-yellow-50 p-3 text-xs text-yellow-700">
+                Integração requer configuração das variáveis GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET no servidor.
+              </div>
+            ) : calStatus.google.connected ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 rounded-lg px-3 py-2">
+                  <span>✅</span>
+                  <span className="font-medium">Google Calendar conectado</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button className="btn-primary text-sm" onClick={syncGoogle} disabled={syncing}>
+                    {syncing ? "Sincronizando..." : "Sincronizar agora"}
+                  </button>
+                  <button
+                    className="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                    onClick={disconnectGoogle}
+                  >
+                    Desconectar
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400">
+                  Ao sincronizar: eventos externos do Google entram no app (categoria Outro) e atividades do app são espelhadas no Google Calendar.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500">
+                  Conecte sua conta Google para sincronizar eventos nos dois sentidos.
+                </p>
+                <a href="/api/calendar/google/connect" className="btn-primary inline-block text-sm">
+                  Conectar Google Calendar
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* iCal Import — Apple Calendar, Outlook, qualquer .ics */}
+          <div className="space-y-3 rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📥</span>
+              <div>
+                <p className="font-medium text-gray-900 text-sm">Importar calendário externo (iCal / Apple Calendar)</p>
+                <p className="text-xs text-gray-500">
+                  Cole a URL de assinatura de qualquer calendário (.ics) — eventos entram no app como atividades e recebem notificações.
+                </p>
+              </div>
+            </div>
+
+            {calStatus === null ? (
+              <p className="text-xs text-gray-400">Carregando...</p>
+            ) : (
+              <div className="space-y-2">
+                {calStatus.icalImport && (
+                  <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2">
+                    <span>✅</span>
+                    <span className="truncate flex-1">{calStatus.icalImport.url}</span>
+                    <button onClick={removeIcalImport} className="text-red-500 underline hover:text-red-700 shrink-0">
+                      Remover
+                    </button>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"
+                    className="input flex-1 text-xs"
+                    value={icalImportUrl}
+                    onChange={(e) => setIcalImportUrl(e.target.value)}
+                  />
+                  <button
+                    className="btn-primary shrink-0 text-sm"
+                    onClick={saveIcalImport}
+                    disabled={savingIcalImport || !icalImportUrl.trim()}
+                  >
+                    {savingIcalImport ? "Importando..." : calStatus.icalImport ? "Atualizar" : "Importar"}
+                  </button>
+                </div>
+                <details className="text-xs text-gray-500 pt-1">
+                  <summary className="cursor-pointer hover:text-gray-700">Como obter a URL do Apple Calendar / Google Calendar</summary>
+                  <div className="mt-2 space-y-2 pl-2 border-l-2 border-gray-100">
+                    <p><strong>Apple Calendar (iPhone/Mac):</strong> Calendários → toque no ⓘ do calendário → Compartilhar calendário → ativar "Calendário público" → Copiar link</p>
+                    <p><strong>Google Calendar:</strong> Configurações → clique no calendário → "Endereço secreto no formato iCal" → copie a URL</p>
+                    <p><strong>Outlook:</strong> Configurações → Exibir todas as configurações → Calendário → Calendários compartilhados → Publicar calendário → copie o link ICS</p>
+                  </div>
+                </details>
+              </div>
+            )}
+          </div>
+
+          {/* iCal Export — exportar do app */}
+          <div className="space-y-3 rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📤</span>
+              <div>
+                <p className="font-medium text-gray-900 text-sm">Exportar agenda (iCal)</p>
+                <p className="text-xs text-gray-500">
+                  Gere um link de assinatura para espelhar sua agenda no Apple Calendar, Outlook ou qualquer app .ics.
+                </p>
               </div>
             </div>
 
@@ -371,7 +517,7 @@ export default function ConfiguracoesPage() {
               <p className="text-xs text-gray-400">Carregando...</p>
             ) : calStatus.ical ? (
               <div className="space-y-2">
-                <p className="text-xs text-gray-500">URL de assinatura — copie e cole no seu app de calendário:</p>
+                <p className="text-xs text-gray-500">Cole este link no seu app de calendário:</p>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
@@ -380,10 +526,7 @@ export default function ConfiguracoesPage() {
                     className="input flex-1 text-xs bg-gray-50 font-mono"
                     onClick={(e) => (e.target as HTMLInputElement).select()}
                   />
-                  <button
-                    className="btn-primary shrink-0 text-xs px-3 py-1.5"
-                    onClick={copyIcalUrl}
-                  >
+                  <button className="btn-primary shrink-0 text-xs px-3 py-1.5" onClick={copyIcalUrl}>
                     {copied ? "Copiado!" : "Copiar"}
                   </button>
                 </div>
@@ -397,89 +540,13 @@ export default function ConfiguracoesPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                <p className="text-xs text-gray-500">
-                  Gere um link privado de assinatura para adicionar sua agenda ao Apple Calendar ou outro app.
-                </p>
-                <button
-                  className="btn-primary text-sm"
-                  onClick={generateIcalToken}
-                  disabled={generatingIcal}
-                >
-                  {generatingIcal ? "Gerando..." : "Gerar link de assinatura"}
+                <p className="text-xs text-gray-500">Gere um link privado de assinatura para adicionar sua agenda ao Apple Calendar ou outro app.</p>
+                <button className="btn-primary text-sm" onClick={generateIcalToken} disabled={generatingIcal}>
+                  {generatingIcal ? "Gerando..." : "Gerar link de exportação"}
                 </button>
               </div>
             )}
           </div>
-
-          {/* Google Calendar */}
-          <div className="space-y-3 rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">🗓️</span>
-              <div>
-                <p className="font-medium text-gray-900 text-sm">Google Calendar</p>
-                <p className="text-xs text-gray-500">Sincroniza as atividades diretamente como eventos na sua agenda do Google</p>
-              </div>
-            </div>
-
-            {calStatus === null ? (
-              <p className="text-xs text-gray-400">Carregando...</p>
-            ) : !calStatus.google.configured ? (
-              <div className="rounded-lg bg-yellow-50 p-3 text-xs text-yellow-700">
-                A integração com Google Calendar requer configuração do servidor (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET). Entre em contato com o administrador.
-              </div>
-            ) : calStatus.google.connected ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 rounded-lg px-3 py-2">
-                  <span>✅</span>
-                  <span className="font-medium">Google Calendar conectado</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    className="btn-primary text-sm"
-                    onClick={syncGoogle}
-                    disabled={syncing}
-                  >
-                    {syncing ? "Sincronizando..." : "Sincronizar agora"}
-                  </button>
-                  <button
-                    className="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                    onClick={disconnectGoogle}
-                  >
-                    Desconectar
-                  </button>
-                </div>
-                <p className="text-xs text-gray-400">
-                  A sincronização é manual — clique em "Sincronizar agora" para enviar as atividades ao Google Calendar.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-xs text-gray-500">
-                  Conecte sua conta Google para exportar as atividades como eventos.
-                </p>
-                <a
-                  href="/api/calendar/google/connect"
-                  className="btn-primary inline-block text-sm"
-                >
-                  Conectar Google Calendar
-                </a>
-              </div>
-            )}
-          </div>
-
-          {/* How to subscribe in Apple Calendar */}
-          {calStatus?.ical && (
-            <details className="rounded-lg border border-gray-100 bg-gray-50 p-4 text-xs text-gray-600">
-              <summary className="cursor-pointer font-medium text-gray-700">Como assinar no Apple Calendar</summary>
-              <ol className="mt-2 list-decimal space-y-1 pl-4">
-                <li>Abra o app <strong>Calendário</strong> no iPhone ou Mac</li>
-                <li>Toque em <strong>Adicionar Calendário</strong> → <strong>Adicionar calendário por assinatura</strong></li>
-                <li>Cole a URL copiada acima</li>
-                <li>Confirme e aguarde a sincronização</li>
-              </ol>
-              <p className="mt-2 text-gray-400">No Google Calendar: Outros calendários → + → Via URL → cole o link.</p>
-            </details>
-          )}
         </div>
       </div>
 

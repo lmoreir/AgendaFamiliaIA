@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import { WhatsAppService } from "../../../../lib/services";
+import { GoogleCalendarService } from "../../../../lib/services/GoogleCalendarService";
+import { fetchAndParseICal } from "../../../../lib/services/ICalImportService";
 
 const WINDOW_MS = 65 * 60 * 1000; // 65 min — cobre a janela entre execuções horárias
 const whatsapp = new WhatsAppService();
@@ -231,7 +233,129 @@ async function handleReminders(request: NextRequest): Promise<NextResponse> {
   }
 
   console.log(`[cron/reminders] processed=${pending.length} sent=${sent} failed=${failed}`);
+
+  // ── Sincronização de calendários externos ──────────────────────────────
+  await syncAllCalendars();
+
   return NextResponse.json({ processed: pending.length, sent, failed, errors });
+}
+
+async function syncAllCalendars(): Promise<void> {
+  try {
+    const families = await prisma.family.findMany({ select: { id: true, owner_id: true, settings: true } });
+    const googleService = new GoogleCalendarService();
+
+    for (const family of families) {
+      const settings = (family.settings as Record<string, unknown>) ?? {};
+
+      // Google Calendar bidirecional
+      const refreshToken = settings.google_refresh_token as string | undefined;
+      if (refreshToken && googleService.isConfigured()) {
+        try {
+          await syncGoogleForFamily(family.id, family.owner_id, refreshToken, settings, googleService);
+          console.log(`[cron/calendar] Google sync ok para família ${family.id}`);
+        } catch (err: any) {
+          console.error(`[cron/calendar] Google sync falhou família ${family.id}:`, err?.message);
+        }
+      }
+
+      // iCal import
+      const icalImportUrl = settings.ical_import_url as string | undefined;
+      if (icalImportUrl) {
+        try {
+          await syncICalForFamily(family.id, family.owner_id, icalImportUrl, settings);
+          console.log(`[cron/calendar] iCal sync ok para família ${family.id}`);
+        } catch (err: any) {
+          console.error(`[cron/calendar] iCal sync falhou família ${family.id}:`, err?.message);
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error("[cron/calendar] Erro geral na sincronização:", err?.message);
+  }
+}
+
+async function syncGoogleForFamily(
+  familyId: string,
+  ownerId: string,
+  refreshToken: string,
+  settings: Record<string, unknown>,
+  service: GoogleCalendarService
+): Promise<void> {
+  const externalEvents = await service.listExternalEvents(refreshToken);
+  const importMap = (settings.google_import_map as Record<string, string>) ?? {};
+  const newImportMap = { ...importMap };
+  const seenGoogleIds = new Set(externalEvents.map((e) => e.id));
+
+  for (const event of externalEvents) {
+    const start = new Date(event.start?.dateTime ?? event.start?.date ?? Date.now());
+    const end = event.end ? new Date(event.end.dateTime ?? event.end.date ?? start) : null;
+    const title = event.summary?.trim() || "Sem título";
+    const existingId = importMap[event.id];
+
+    if (existingId) {
+      await prisma.activity.updateMany({
+        where: { id: existingId, family_id: familyId },
+        data: { title, description: event.description ?? null, location: event.location ?? null, start_at: start, end_at: end },
+      });
+    } else {
+      const created = await prisma.activity.create({
+        data: { family_id: familyId, created_by: ownerId, title, description: event.description ?? null, location: event.location ?? null, category: "OTHER", start_at: start, end_at: end, source: "WEB", status: "ACTIVE" },
+      });
+      newImportMap[event.id] = created.id;
+    }
+  }
+
+  for (const [googleId, activityId] of Object.entries(importMap)) {
+    if (!seenGoogleIds.has(googleId)) {
+      await prisma.activity.updateMany({ where: { id: activityId, family_id: familyId }, data: { status: "CANCELLED" } });
+      delete newImportMap[googleId];
+    }
+  }
+
+  const updatedSettings = { ...settings, google_import_map: newImportMap };
+  await prisma.family.update({ where: { id: familyId }, data: { settings: updatedSettings as any } });
+
+  const importedIds = new Set(Object.values(newImportMap));
+  const allActivities = await prisma.activity.findMany({ where: { family_id: familyId } });
+  const toExport = allActivities.filter((a) => !importedIds.has(a.id));
+  await service.syncActivities(refreshToken, toExport as any);
+}
+
+async function syncICalForFamily(
+  familyId: string,
+  ownerId: string,
+  url: string,
+  settings: Record<string, unknown>
+): Promise<void> {
+  const events = await fetchAndParseICal(url);
+  const importMap = (settings.ical_import_map as Record<string, string>) ?? {};
+  const newMap = { ...importMap };
+  const seenUids = new Set(events.map((e) => e.uid));
+
+  for (const event of events) {
+    const existingId = importMap[event.uid];
+    if (existingId) {
+      await prisma.activity.updateMany({
+        where: { id: existingId, family_id: familyId },
+        data: { title: event.summary, description: event.description ?? null, location: event.location ?? null, start_at: event.start, end_at: event.end ?? null },
+      });
+    } else {
+      const created = await prisma.activity.create({
+        data: { family_id: familyId, created_by: ownerId, title: event.summary, description: event.description ?? null, location: event.location ?? null, category: "OTHER", start_at: event.start, end_at: event.end ?? null, source: "WEB", status: "ACTIVE" },
+      });
+      newMap[event.uid] = created.id;
+    }
+  }
+
+  for (const [uid, activityId] of Object.entries(importMap)) {
+    if (!seenUids.has(uid)) {
+      await prisma.activity.updateMany({ where: { id: activityId, family_id: familyId }, data: { status: "CANCELLED" } });
+      delete newMap[uid];
+    }
+  }
+
+  await prisma.family.update({ where: { id: familyId }, data: { settings: { ...settings, ical_import_map: newMap } as any } });
 }
 
 export async function POST(request: NextRequest) {

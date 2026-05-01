@@ -19,18 +19,17 @@ export async function GET() {
   if (!prismaUser) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
   const family = await prisma.family.findFirst({ where: { owner_id: prismaUser.id } });
-  if (!family) return NextResponse.json({ ical: null, google: { connected: false } });
+  if (!family) return NextResponse.json({ ical: null, icalImport: null, google: { connected: false, configured: false } });
 
   const settings = (family.settings as Record<string, unknown>) ?? {};
   const icalToken = settings.ical_token as string | undefined;
+  const icalImportUrl = settings.ical_import_url as string | undefined;
   const googleConnected = !!(settings.google_refresh_token as string | undefined);
   const googleConfigured = new GoogleCalendarService().isConfigured();
 
   return NextResponse.json({
     ical: icalToken ? { token: icalToken } : null,
-    google: {
-      connected: googleConnected,
-      configured: googleConfigured,
-    },
+    icalImport: icalImportUrl ? { url: icalImportUrl } : null,
+    google: { connected: googleConnected, configured: googleConfigured },
   });
 }

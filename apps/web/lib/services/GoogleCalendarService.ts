@@ -69,6 +69,35 @@ export class GoogleCalendarService {
     });
   }
 
+  async listExternalEvents(refreshToken: string): Promise<Array<{
+    id: string;
+    summary?: string;
+    description?: string;
+    location?: string;
+    start: { dateTime?: string; date?: string };
+    end?: { dateTime?: string; date?: string };
+  }>> {
+    const accessToken = await this.getAccessToken(refreshToken);
+    const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const timeMax = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+    const params = new URLSearchParams({
+      timeMin, timeMax,
+      maxResults: "500",
+      singleEvents: "true",
+      orderBy: "startTime",
+    });
+    const res = await fetch(`${CALENDAR_API}/calendars/primary/events?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return [];
+    const data = await res.json() as { items?: Array<any> };
+    return (data.items ?? []).filter(
+      (e: any) =>
+        e.status !== "cancelled" &&
+        e.extendedProperties?.private?.source !== "agendaFamilia"
+    );
+  }
+
   async syncActivities(
     refreshToken: string,
     activities: Array<{
