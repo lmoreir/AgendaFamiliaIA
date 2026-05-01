@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 interface UserProfile {
   id: string;
@@ -21,7 +22,14 @@ interface Family {
   settings?: FamilySettings | null;
 }
 
+interface CalendarStatus {
+  ical: { token: string } | null;
+  google: { connected: boolean; configured: boolean };
+}
+
 export default function ConfiguracoesPage() {
+  const searchParams = useSearchParams();
+
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [family, setFamily] = useState<Family | null>(null);
 
@@ -41,6 +49,13 @@ export default function ConfiguracoesPage() {
   const [savingNotif, setSavingNotif] = useState(false);
   const [msgNotif, setMsgNotif] = useState("");
 
+  // Calendário
+  const [calStatus, setCalStatus] = useState<CalendarStatus | null>(null);
+  const [calMsg, setCalMsg] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [generatingIcal, setGeneratingIcal] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   useEffect(() => {
     fetch("/api/user/profile")
       .then((r) => r.json())
@@ -50,14 +65,32 @@ export default function ConfiguracoesPage() {
           setName(data.user.name ?? "");
           setPhone(data.user.phone_whatsapp ?? "");
         }
-        if (data.family) {
-          setFamily(data.family);
-          const s: FamilySettings = data.family.settings ?? {};
+        if (data.family) setFamily(data.family);
+      });
+
+    fetch("/api/families")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.family?.settings) {
+          const s: FamilySettings = data.family.settings;
           setSecondaryPhone(s.secondary_whatsapp ?? "");
           setNotifyEmail(s.notify_email ?? false);
         }
       });
-  }, []);
+
+    fetch("/api/calendar/status")
+      .then((r) => r.json())
+      .then((data: CalendarStatus) => setCalStatus(data))
+      .catch(() => {});
+
+    // Feedback from OAuth redirect
+    const calParam = searchParams.get("calendar");
+    const errParam = searchParams.get("error");
+    if (calParam === "connected") setCalMsg("✅ Google Calendar conectado com sucesso!");
+    else if (errParam === "google_denied") setCalMsg("❌ Autorização negada. Tente novamente.");
+    else if (errParam === "google_no_refresh_token") setCalMsg("❌ Não foi possível obter o token. Tente novamente.");
+    else if (errParam === "google_not_configured") setCalMsg("❌ Google Calendar não está configurado neste servidor.");
+  }, [searchParams]);
 
   async function saveName() {
     setSaving(true);
@@ -142,6 +175,57 @@ export default function ConfiguracoesPage() {
     }
   }
 
+  // --- Calendar helpers ---
+
+  function getIcalUrl(token: string): string {
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}/api/calendar/ical/${token}`;
+    }
+    return `/api/calendar/ical/${token}`;
+  }
+
+  async function generateIcalToken() {
+    setGeneratingIcal(true);
+    const res = await fetch("/api/calendar/ical/generate", { method: "POST" });
+    const data = await res.json();
+    setGeneratingIcal(false);
+    if (res.ok) {
+      setCalStatus((prev) => ({ ...prev!, ical: { token: data.token } }));
+    }
+  }
+
+  async function copyIcalUrl() {
+    if (!calStatus?.ical) return;
+    await navigator.clipboard.writeText(getIcalUrl(calStatus.ical.token));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function syncGoogle() {
+    setSyncing(true);
+    setCalMsg("");
+    const res = await fetch("/api/calendar/google/sync", { method: "POST" });
+    const data = await res.json();
+    setSyncing(false);
+    if (res.ok) {
+      setCalMsg(`✅ Sincronizado! ${data.created} criados, ${data.updated} atualizados, ${data.deleted} removidos.`);
+    } else {
+      setCalMsg(`❌ ${data.error ?? "Erro ao sincronizar."}`);
+    }
+  }
+
+  async function disconnectGoogle() {
+    if (!confirm("Desconectar o Google Calendar? As atividades já exportadas permanecem na sua agenda do Google.")) return;
+    setCalMsg("");
+    const res = await fetch("/api/calendar/google/disconnect", { method: "POST" });
+    if (res.ok) {
+      setCalStatus((prev) => ({ ...prev!, google: { ...prev!.google, connected: false } }));
+      setCalMsg("Google Calendar desconectado.");
+    } else {
+      setCalMsg("❌ Erro ao desconectar.");
+    }
+  }
+
   const isPhoneLinked = !!profile?.phone_whatsapp;
   const hasSecondary = !!(family?.settings as FamilySettings | null)?.secondary_whatsapp;
 
@@ -208,7 +292,6 @@ export default function ConfiguracoesPage() {
               Configure canais adicionais para garantir que os lembretes das atividades não sejam perdidos.
             </p>
 
-            {/* Segundo número WhatsApp */}
             <div className="space-y-2">
               <label className="label block font-medium">Segundo número WhatsApp <span className="text-gray-400 font-normal">(opcional)</span></label>
               <p className="text-xs text-gray-500">
@@ -232,7 +315,6 @@ export default function ConfiguracoesPage() {
               <p className="text-xs text-gray-400">Deixe em branco para remover o segundo número.</p>
             </div>
 
-            {/* Notificação por email */}
             <div className="flex items-start gap-3 rounded-lg border border-gray-200 p-4">
               <input
                 id="notify-email"
@@ -258,6 +340,148 @@ export default function ConfiguracoesPage() {
           </div>
         </div>
       )}
+
+      {/* Integrações de Calendário */}
+      <div className="card">
+        <div className="card-header">
+          <h2 className="font-semibold text-gray-900">Integrações de calendário</h2>
+        </div>
+        <div className="card-body space-y-6">
+          <p className="text-sm text-gray-600">
+            Sincronize as atividades da sua família com seu aplicativo de calendário preferido.
+          </p>
+
+          {calMsg && (
+            <div className={`rounded-lg p-3 text-sm font-medium ${calMsg.startsWith("✅") ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
+              {calMsg}
+            </div>
+          )}
+
+          {/* iCal */}
+          <div className="space-y-3 rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📅</span>
+              <div>
+                <p className="font-medium text-gray-900 text-sm">Apple Calendar / iCal</p>
+                <p className="text-xs text-gray-500">Funciona com Apple Calendar, Outlook, Google Calendar (modo assinatura) e qualquer app com suporte a .ics</p>
+              </div>
+            </div>
+
+            {calStatus === null ? (
+              <p className="text-xs text-gray-400">Carregando...</p>
+            ) : calStatus.ical ? (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500">URL de assinatura — copie e cole no seu app de calendário:</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={getIcalUrl(calStatus.ical.token)}
+                    className="input flex-1 text-xs bg-gray-50 font-mono"
+                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                  />
+                  <button
+                    className="btn-primary shrink-0 text-xs px-3 py-1.5"
+                    onClick={copyIcalUrl}
+                  >
+                    {copied ? "Copiado!" : "Copiar"}
+                  </button>
+                </div>
+                <button
+                  className="text-xs text-gray-400 underline hover:text-gray-600"
+                  onClick={generateIcalToken}
+                  disabled={generatingIcal}
+                >
+                  {generatingIcal ? "Gerando..." : "Gerar novo link (invalida o atual)"}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500">
+                  Gere um link privado de assinatura para adicionar sua agenda ao Apple Calendar ou outro app.
+                </p>
+                <button
+                  className="btn-primary text-sm"
+                  onClick={generateIcalToken}
+                  disabled={generatingIcal}
+                >
+                  {generatingIcal ? "Gerando..." : "Gerar link de assinatura"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Google Calendar */}
+          <div className="space-y-3 rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🗓️</span>
+              <div>
+                <p className="font-medium text-gray-900 text-sm">Google Calendar</p>
+                <p className="text-xs text-gray-500">Sincroniza as atividades diretamente como eventos na sua agenda do Google</p>
+              </div>
+            </div>
+
+            {calStatus === null ? (
+              <p className="text-xs text-gray-400">Carregando...</p>
+            ) : !calStatus.google.configured ? (
+              <div className="rounded-lg bg-yellow-50 p-3 text-xs text-yellow-700">
+                A integração com Google Calendar requer configuração do servidor (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET). Entre em contato com o administrador.
+              </div>
+            ) : calStatus.google.connected ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 rounded-lg px-3 py-2">
+                  <span>✅</span>
+                  <span className="font-medium">Google Calendar conectado</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="btn-primary text-sm"
+                    onClick={syncGoogle}
+                    disabled={syncing}
+                  >
+                    {syncing ? "Sincronizando..." : "Sincronizar agora"}
+                  </button>
+                  <button
+                    className="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                    onClick={disconnectGoogle}
+                  >
+                    Desconectar
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400">
+                  A sincronização é manual — clique em "Sincronizar agora" para enviar as atividades ao Google Calendar.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500">
+                  Conecte sua conta Google para exportar as atividades como eventos.
+                </p>
+                <a
+                  href="/api/calendar/google/connect"
+                  className="btn-primary inline-block text-sm"
+                >
+                  Conectar Google Calendar
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* How to subscribe in Apple Calendar */}
+          {calStatus?.ical && (
+            <details className="rounded-lg border border-gray-100 bg-gray-50 p-4 text-xs text-gray-600">
+              <summary className="cursor-pointer font-medium text-gray-700">Como assinar no Apple Calendar</summary>
+              <ol className="mt-2 list-decimal space-y-1 pl-4">
+                <li>Abra o app <strong>Calendário</strong> no iPhone ou Mac</li>
+                <li>Toque em <strong>Adicionar Calendário</strong> → <strong>Adicionar calendário por assinatura</strong></li>
+                <li>Cole a URL copiada acima</li>
+                <li>Confirme e aguarde a sincronização</li>
+              </ol>
+              <p className="mt-2 text-gray-400">No Google Calendar: Outros calendários → + → Via URL → cole o link.</p>
+            </details>
+          )}
+        </div>
+      </div>
 
       {/* Conta */}
       <div className="card">
