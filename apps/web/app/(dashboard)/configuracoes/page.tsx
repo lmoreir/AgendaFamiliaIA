@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 interface UserProfile {
@@ -28,7 +28,7 @@ interface CalendarStatus {
   google: { connected: boolean; configured: boolean };
 }
 
-export default function ConfiguracoesPage() {
+function ConfiguracoesContent() {
   const searchParams = useSearchParams();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -578,5 +578,13 @@ export default function ConfiguracoesPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ConfiguracoesPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-sm text-gray-400">Carregando...</div>}>
+      <ConfiguracoesContent />
+    </Suspense>
   );
 }
