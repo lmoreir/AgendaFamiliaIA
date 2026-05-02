@@ -244,30 +244,62 @@ async function syncAllCalendars(): Promise<void> {
   try {
     const families = await prisma.family.findMany({ select: { id: true, owner_id: true, settings: true } });
     const googleService = new GoogleCalendarService();
+    const now = new Date();
 
     for (const family of families) {
       const settings = (family.settings as Record<string, unknown>) ?? {};
+      const refreshToken = settings.google_refresh_token as string | undefined;
+      const icalImportUrl = settings.ical_import_url as string | undefined;
+
+      if (!refreshToken && !icalImportUrl) continue;
+
+      // Verificar se já é hora de sincronizar
+      const syncInterval = (settings.calendar_sync_interval as string | undefined) ?? "hourly";
+      const lastSyncedAt = settings.calendar_last_synced_at as string | undefined;
+      if (lastSyncedAt) {
+        const msSinceLast = now.getTime() - new Date(lastSyncedAt).getTime();
+        const thresholdMs = syncInterval === "daily" ? 23 * 60 * 60 * 1000 : 0;
+        if (msSinceLast < thresholdMs) {
+          console.log(`[cron/calendar] Família ${family.id}: próxima sincronização em ${Math.round((thresholdMs - msSinceLast) / 60000)}min`);
+          continue;
+        }
+      }
+
+      let synced = false;
 
       // Google Calendar bidirecional
-      const refreshToken = settings.google_refresh_token as string | undefined;
       if (refreshToken && googleService.isConfigured()) {
         try {
           await syncGoogleForFamily(family.id, family.owner_id, refreshToken, settings, googleService);
           console.log(`[cron/calendar] Google sync ok para família ${family.id}`);
+          synced = true;
         } catch (err: any) {
           console.error(`[cron/calendar] Google sync falhou família ${family.id}:`, err?.message);
         }
       }
 
       // iCal import
-      const icalImportUrl = settings.ical_import_url as string | undefined;
       if (icalImportUrl) {
         try {
-          await syncICalForFamily(family.id, family.owner_id, icalImportUrl, settings);
+          // Relê as settings atualizadas (syncGoogleForFamily pode ter escrito nelas)
+          const fresh = await prisma.family.findUnique({ where: { id: family.id }, select: { settings: true } });
+          const freshSettings = (fresh?.settings as Record<string, unknown>) ?? settings;
+          await syncICalForFamily(family.id, family.owner_id, icalImportUrl, freshSettings);
           console.log(`[cron/calendar] iCal sync ok para família ${family.id}`);
+          synced = true;
         } catch (err: any) {
           console.error(`[cron/calendar] iCal sync falhou família ${family.id}:`, err?.message);
         }
+      }
+
+      // Registrar timestamp da última sincronização
+      if (synced) {
+        const fresh = await prisma.family.findUnique({ where: { id: family.id }, select: { settings: true } });
+        const fs = (fresh?.settings as Record<string, unknown>) ?? {};
+        await prisma.family.update({
+          where: { id: family.id },
+          data: { settings: { ...fs, calendar_last_synced_at: now.toISOString() } as any },
+        });
       }
     }
   } catch (err: any) {

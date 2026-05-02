@@ -15,6 +15,7 @@ const PatchSettingsSchema = z.object({
     .nullable()
     .optional(),
   notify_email: z.boolean().optional(),
+  calendar_sync_interval: z.enum(["hourly", "daily"]).optional(),
 });
 
 async function resolveUser(supabase: ReturnType<typeof createClient>) {
@@ -114,6 +115,9 @@ export async function PATCH(request: NextRequest) {
   }
   if (parsed.data.notify_email !== undefined) {
     newSettings.notify_email = parsed.data.notify_email;
+  }
+  if (parsed.data.calendar_sync_interval !== undefined) {
+    newSettings.calendar_sync_interval = parsed.data.calendar_sync_interval;
   }
 
   const updated = await prisma.family.update({

@@ -26,10 +26,14 @@ export async function GET() {
   const icalImportUrl = settings.ical_import_url as string | undefined;
   const googleConnected = !!(settings.google_refresh_token as string | undefined);
   const googleConfigured = new GoogleCalendarService().isConfigured();
+  const syncInterval = (settings.calendar_sync_interval as string | undefined) ?? "hourly";
+  const lastSyncedAt = (settings.calendar_last_synced_at as string | undefined) ?? null;
 
   return NextResponse.json({
     ical: icalToken ? { token: icalToken } : null,
     icalImport: icalImportUrl ? { url: icalImportUrl } : null,
     google: { connected: googleConnected, configured: googleConfigured },
+    syncInterval,
+    lastSyncedAt,
   });
 }

@@ -26,6 +26,8 @@ interface CalendarStatus {
   ical: { token: string } | null;
   icalImport: { url: string } | null;
   google: { connected: boolean; configured: boolean };
+  syncInterval: "hourly" | "daily";
+  lastSyncedAt: string | null;
 }
 
 function ConfiguracoesContent() {
@@ -59,6 +61,9 @@ function ConfiguracoesContent() {
   // iCal import
   const [icalImportUrl, setIcalImportUrl] = useState("");
   const [savingIcalImport, setSavingIcalImport] = useState(false);
+  // Intervalo de sincronização
+  const [syncInterval, setSyncInterval] = useState<"hourly" | "daily">("hourly");
+  const [savingSyncInterval, setSavingSyncInterval] = useState(false);
 
   useEffect(() => {
     fetch("/api/user/profile")
@@ -87,6 +92,7 @@ function ConfiguracoesContent() {
       .then((data: CalendarStatus) => {
         setCalStatus(data);
         if (data.icalImport?.url) setIcalImportUrl(data.icalImport.url);
+        if (data.syncInterval) setSyncInterval(data.syncInterval);
       })
       .catch(() => {});
 
@@ -183,6 +189,29 @@ function ConfiguracoesContent() {
   }
 
   // --- Calendar helpers ---
+
+  function formatLastSynced(iso: string | null): string {
+    if (!iso) return "Nunca sincronizado";
+    return new Date(iso).toLocaleString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  async function saveSyncInterval(value: "hourly" | "daily") {
+    setSyncInterval(value);
+    setSavingSyncInterval(true);
+    await fetch("/api/families", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ calendar_sync_interval: value }),
+    });
+    setSavingSyncInterval(false);
+    setCalStatus((prev) => prev ? { ...prev, syncInterval: value } : prev);
+  }
 
   function getIcalUrl(token: string): string {
     if (typeof window !== "undefined") {
@@ -416,11 +445,38 @@ function ConfiguracoesContent() {
                 Integração requer configuração das variáveis GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET no servidor.
               </div>
             ) : calStatus.google.connected ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 rounded-lg px-3 py-2">
                   <span>✅</span>
-                  <span className="font-medium">Google Calendar conectado</span>
+                  <span className="font-medium">Google Calendar conectado — sincronização automática ativa</span>
                 </div>
+
+                {/* Frequência de sincronização */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-700">Frequência de sincronização automática</p>
+                  <div className="flex gap-3">
+                    {(["hourly", "daily"] as const).map((val) => (
+                      <label key={val} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="syncInterval"
+                          value={val}
+                          checked={syncInterval === val}
+                          onChange={() => saveSyncInterval(val)}
+                          disabled={savingSyncInterval}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <span className="text-sm text-gray-700">
+                          {val === "hourly" ? "A cada hora" : "Uma vez ao dia"}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Última sincronização: {formatLastSynced(calStatus.lastSyncedAt)}
+                  </p>
+                </div>
+
                 <div className="flex flex-wrap gap-2">
                   <button className="btn-primary text-sm" onClick={syncGoogle} disabled={syncing}>
                     {syncing ? "Sincronizando..." : "Sincronizar agora"}
@@ -433,13 +489,13 @@ function ConfiguracoesContent() {
                   </button>
                 </div>
                 <p className="text-xs text-gray-400">
-                  Ao sincronizar: eventos externos do Google entram no app (categoria Outro) e atividades do app são espelhadas no Google Calendar.
+                  Eventos do Google entram no app (categoria Outro) e atividades do app são espelhadas no Google Calendar.
                 </p>
               </div>
             ) : (
               <div className="space-y-2">
                 <p className="text-xs text-gray-500">
-                  Conecte sua conta Google para sincronizar eventos nos dois sentidos.
+                  Conecte sua conta Google para sincronizar eventos nos dois sentidos automaticamente.
                 </p>
                 <a href="/api/calendar/google/connect" className="btn-primary inline-block text-sm">
                   Conectar Google Calendar
@@ -455,7 +511,7 @@ function ConfiguracoesContent() {
               <div>
                 <p className="font-medium text-gray-900 text-sm">Importar calendário externo (iCal / Apple Calendar)</p>
                 <p className="text-xs text-gray-500">
-                  Cole a URL de assinatura de qualquer calendário (.ics) — eventos entram no app como atividades e recebem notificações.
+                  Cole a URL de assinatura de qualquer calendário (.ics) — eventos entram no app automaticamente e recebem notificações.
                 </p>
               </div>
             </div>
