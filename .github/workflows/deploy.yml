@@ -16,11 +16,11 @@ jobs:
           node-version: 20
 
       - name: Install Vercel CLI
-        run: npm install -g vercel
+        run: npm install -g vercel@latest
 
       - name: Deploy to Vercel Production
         working-directory: apps/web
-        run: vercel --prod --token ${{ secrets.VERCEL_TOKEN }}
+        run: vercel --prod --yes --token ${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: team_OnXysm6wxbCk8CfbVf8YTEX9
           VERCEL_PROJECT_ID: prj_fQX8QOTAO529icpMPYYP3DMc5Ju3
