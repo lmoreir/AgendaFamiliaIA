@@ -244,7 +244,15 @@ function ConfiguracoesContent() {
     const data = await res.json();
     setSyncing(false);
     if (res.ok) {
-      setCalMsg(`✅ Sincronizado! ${data.created} criados, ${data.updated} atualizados, ${data.deleted} removidos.`);
+      const imp = data.import ?? {};
+      const exp = data.export ?? {};
+      const parts: string[] = [];
+      if (imp.imported) parts.push(`${imp.imported} importados do Google`);
+      if (imp.updated) parts.push(`${imp.updated} atualizados`);
+      if (exp.created) parts.push(`${exp.created} exportados para o Google`);
+      setCalMsg(`✅ Sincronizado! ${parts.length ? parts.join(", ") : "Nenhuma alteração."}`);
+      // Atualiza o timestamp de última sincronização
+      setCalStatus((prev) => prev ? { ...prev, lastSyncedAt: new Date().toISOString() } : prev);
     } else {
       setCalMsg(`❌ ${data.error ?? "Erro ao sincronizar."}`);
     }

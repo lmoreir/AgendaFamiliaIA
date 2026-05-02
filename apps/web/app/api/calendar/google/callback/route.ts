@@ -53,29 +53,73 @@ export async function GET(request: NextRequest) {
   const settings = (family.settings as Record<string, unknown>) ?? {};
   await prisma.family.update({
     where: { id: family.id },
-    data: {
-      settings: {
-        ...settings,
-        google_refresh_token: refreshToken,
-      } as any,
-    },
+    data: { settings: { ...settings, google_refresh_token: refreshToken } as any },
   });
 
-  // Run initial sync in the background (fire and forget)
-  runInitialSync(family.id, refreshToken).catch((err) =>
+  // Sync bidirecional inicial (fire and forget)
+  runInitialSync(family.id, prismaUser.id, refreshToken, settings).catch((err) =>
     console.error("[Calendar] Initial sync failed:", err)
   );
 
   return NextResponse.redirect(new URL("/configuracoes?calendar=connected", appUrl));
 }
 
-async function runInitialSync(familyId: string, refreshToken: string) {
+async function runInitialSync(
+  familyId: string,
+  ownerId: string,
+  refreshToken: string,
+  prevSettings: Record<string, unknown>
+) {
   const { GoogleCalendarService } = await import("../../../../../lib/services/GoogleCalendarService");
   const service = new GoogleCalendarService();
-  const activities = await prisma.activity.findMany({
-    where: { family_id: familyId },
-    orderBy: { start_at: "asc" },
-  });
-  const result = await service.syncActivities(refreshToken, activities as any);
-  console.log(`[Calendar] Initial sync done: created=${result.created} updated=${result.updated} deleted=${result.deleted}`);
+
+  // Fase 1: Google → App (importar eventos externos)
+  const externalEvents = await service.listExternalEvents(refreshToken);
+  const importMap = (prevSettings.google_import_map as Record<string, string>) ?? {};
+  const newImportMap = { ...importMap };
+  const seenIds = new Set(externalEvents.map((e) => e.id));
+  let imported = 0;
+
+  for (const event of externalEvents) {
+    const start = new Date(event.start?.dateTime ?? event.start?.date ?? Date.now());
+    const end = event.end ? new Date(event.end.dateTime ?? event.end.date ?? start) : null;
+    const title = event.summary?.trim() || "Sem título";
+    if (!importMap[event.id]) {
+      const created = await prisma.activity.create({
+        data: {
+          family_id: familyId,
+          created_by: ownerId,
+          title,
+          description: event.description ?? null,
+          location: event.location ?? null,
+          category: "OTHER",
+          start_at: start,
+          end_at: end,
+          source: "WEB",
+          status: "ACTIVE",
+        },
+      });
+      newImportMap[event.id] = created.id;
+      imported++;
+    }
+  }
+
+  for (const [googleId, activityId] of Object.entries(importMap)) {
+    if (!seenIds.has(googleId)) {
+      await prisma.activity.updateMany({ where: { id: activityId, family_id: familyId }, data: { status: "CANCELLED" } });
+      delete newImportMap[googleId];
+    }
+  }
+
+  const freshFamily = await prisma.family.findUnique({ where: { id: familyId }, select: { settings: true } });
+  const updatedSettings = { ...(freshFamily?.settings as Record<string, unknown> ?? {}), google_import_map: newImportMap };
+  await prisma.family.update({ where: { id: familyId }, data: { settings: updatedSettings as any } });
+
+  // Fase 2: App → Google (exportar atividades nativas)
+  const importedIds = new Set(Object.values(newImportMap));
+  const all = await prisma.activity.findMany({ where: { family_id: familyId } });
+  const toExport = all.filter((a) => !importedIds.has(a.id));
+  const exportResult = await service.syncActivities(refreshToken, toExport as any);
+
+  console.log(`[Calendar] Initial sync done: imported=${imported} | exported created=${exportResult.created} updated=${exportResult.updated}`);
 }
