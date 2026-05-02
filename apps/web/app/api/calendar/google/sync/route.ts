@@ -43,11 +43,31 @@ export async function POST() {
 
       const existingId = importMap[event.id];
       if (existingId) {
-        await prisma.activity.updateMany({
+        const { count } = await prisma.activity.updateMany({
           where: { id: existingId, family_id: family.id },
           data: { title, description: event.description ?? null, location: event.location ?? null, start_at: start, end_at: end },
         });
-        importUpdated++;
+        if (count > 0) {
+          importUpdated++;
+        } else {
+          // Atividade sumiu do banco (sync inicial incompleto) — recriar
+          const created = await prisma.activity.create({
+            data: {
+              family_id: family.id,
+              created_by: prismaUser.id,
+              title,
+              description: event.description ?? null,
+              location: event.location ?? null,
+              category: "OTHER",
+              start_at: start,
+              end_at: end,
+              source: "WEB",
+              status: "ACTIVE",
+            },
+          });
+          newImportMap[event.id] = created.id;
+          imported++;
+        }
       } else {
         const created = await prisma.activity.create({
           data: {

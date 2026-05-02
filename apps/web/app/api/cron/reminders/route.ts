@@ -326,10 +326,17 @@ async function syncGoogleForFamily(
     const existingId = importMap[event.id];
 
     if (existingId) {
-      await prisma.activity.updateMany({
+      const { count } = await prisma.activity.updateMany({
         where: { id: existingId, family_id: familyId },
         data: { title, description: event.description ?? null, location: event.location ?? null, start_at: start, end_at: end },
       });
+      if (count === 0) {
+        // Atividade não existe mais — recriar
+        const created = await prisma.activity.create({
+          data: { family_id: familyId, created_by: ownerId, title, description: event.description ?? null, location: event.location ?? null, category: "OTHER", start_at: start, end_at: end, source: "WEB", status: "ACTIVE" },
+        });
+        newImportMap[event.id] = created.id;
+      }
     } else {
       const created = await prisma.activity.create({
         data: { family_id: familyId, created_by: ownerId, title, description: event.description ?? null, location: event.location ?? null, category: "OTHER", start_at: start, end_at: end, source: "WEB", status: "ACTIVE" },
