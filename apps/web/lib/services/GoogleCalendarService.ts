@@ -89,7 +89,10 @@ export class GoogleCalendarService {
     const res = await fetch(`${CALENDAR_API}/calendars/primary/events?${params}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Google Calendar API error ${res.status}: ${errText}`);
+    }
     const data = await res.json() as { items?: Array<any> };
     return (data.items ?? []).filter(
       (e: any) =>
