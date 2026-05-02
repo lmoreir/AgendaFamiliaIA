@@ -460,26 +460,11 @@ function ConfiguracoesContent() {
                 </div>
 
                 {/* Frequência de sincronização */}
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-gray-700">Frequência de sincronização automática</p>
-                  <div className="flex gap-3">
-                    {(["hourly", "daily"] as const).map((val) => (
-                      <label key={val} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="syncInterval"
-                          value={val}
-                          checked={syncInterval === val}
-                          onChange={() => saveSyncInterval(val)}
-                          disabled={savingSyncInterval}
-                          className="h-4 w-4 text-blue-600 border-gray-300"
-                        />
-                        <span className="text-sm text-gray-700">
-                          {val === "hourly" ? "A cada hora" : "Uma vez ao dia"}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-700">Sincronização automática</p>
+                  <p className="text-xs text-gray-500">
+                    Ocorre uma vez ao dia às 8h (padrão do plano atual). Use "Sincronizar agora" para atualizar imediatamente.
+                  </p>
                   <p className="text-xs text-gray-400">
                     Última sincronização: {formatLastSynced(calStatus.lastSyncedAt)}
                   </p>
